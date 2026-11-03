@@ -7,8 +7,10 @@ serves an authenticated browser UI.
 - `client/`: plugin manifest, Bun server, browser UI, unit tests and e2e scripts.
 - `sdk/`: public Hub JSON-RPC client used by the plugin.
 
-The Rust `yolo web` gateway remains in the core repository. It is a separate
-scoped browser transport over `public-client.sock`, not part of this plugin.
+This is the supported web client path for YoloShell. The plugin runs as a
+trusted user-level process and uses the same-UID local management socket through
+Yolo's plugin runtime. There is no separate `yolo web` browser gateway; the
+management socket and Hub token never reach the browser.
 
 ## Install
 
