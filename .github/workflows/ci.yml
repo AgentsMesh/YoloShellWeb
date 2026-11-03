@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - name: Line limits
+        run: sh scripts/check-lines.sh
+      - name: Unit tests
+        working-directory: client
+        run: bun test
+      - name: Browser build
+        working-directory: client
+        run: bun build browser/main.ts --target=browser --outdir "$RUNNER_TEMP/web"
+      - name: Server build
+        working-directory: client
+        run: bun build scripts/plugin.ts server/index.ts --target=bun --outdir "$RUNNER_TEMP/server"
