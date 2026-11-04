@@ -11,8 +11,10 @@ commands below link a local checkout for development.
 # from this repository root, with YoloShell installed
 yolo plugin link "$PWD" --trust
 export YOLO_PLUGIN_PORT=4199
+# optional: only for a non-default Hub
 export YOLO_HUB_SOCKET=/path/to/hub.sock YOLO_HUB_ID=<hub-id>
 yolo plugin startup
+yolo plugin log web.client
 cat "$(yolo plugin data-dir web.client)/token"
 # open the printed local/LAN URL and paste the token
 yolo plugin action web.client status

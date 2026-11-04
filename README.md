@@ -18,6 +18,7 @@ management socket and Hub token never reach the browser.
 ```sh
 yolo plugin install web.client --trust
 yolo plugin startup
+yolo plugin log web.client
 cat "$(yolo plugin data-dir web.client)/token"
 # open the printed URL and paste the token
 yolo plugin action web.client status
