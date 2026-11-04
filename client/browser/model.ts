@@ -1,5 +1,6 @@
 import { filter } from "./appSelectors.js";
 import { terminalKey } from "./catalogueIndex.js";
+import { agentStarting } from "./pendingAgents.js";
 import { getState } from "./store.js";
 import type { Agent, Json, Selected, Terminal } from "./types.js";
 
@@ -103,6 +104,10 @@ export function shortPath(path: string): string {
 }
 
 export function agentState(agent: Agent): { key: string; label: string } {
+  const address = agent.terminal?.address;
+  if (address && agentStarting(address.machine, address.terminal_id)) {
+    return { key: "working", label: "Starting" };
+  }
   const lifecycle = agent.lifecycle?.state ?? "unknown";
   if (lifecycle === "starting") return { key: "working", label: "Starting" };
   if (lifecycle === "exited") return { key: "exited", label: "Exited" };

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { attentionAgents, needsAgents } from "../browser/attention";
+import { prunePendingAgents } from "../browser/pendingAgents";
 import { dispatch, resetStore } from "../browser/store";
 import type { Agent } from "../browser/types";
 
@@ -9,6 +10,7 @@ function agent(
   respond = "unsupported",
   kind = "codex",
   machine = "m1",
+  terminalId = crypto.randomUUID(),
 ): Agent {
   return {
     cursor: {
@@ -17,6 +19,7 @@ function agent(
         execution_id: crypto.randomUUID(),
       },
     },
+    terminal: { address: { machine, terminal_id: terminalId } },
     provider: { kind },
     activity,
     capabilities: { respond_interaction: { support: respond } },
@@ -87,5 +90,29 @@ describe("needs you", () => {
   test("falls back to terminal approval for an older Hub without features", () => {
     setInventory({ hubs: { hubs: [{ machine: "m1", providers: [{ provider_id: "codex" }] }] } });
     expect(needsAgents([agent("waiting_for_approval", false, "unsupported", "codex")])).toHaveLength(1);
+  });
+
+  test("lists a terminal-native finished turn", () => {
+    hub("codex", "terminal");
+    expect(
+      needsAgents([agent("waiting_for_input", false, "unsupported", "codex")]),
+    ).toHaveLength(1);
+  });
+
+  test("keeps a typed provider finished turn out of the terminal inbox", () => {
+    hub("claude_code", "typed");
+    expect(
+      needsAgents([agent("waiting_for_input", false, "unsupported", "claude_code")]),
+    ).toHaveLength(0);
+  });
+
+  test("excludes a freshly claimed creation during its prompt delivery", () => {
+    hub("codex", "terminal");
+    const terminalId = crypto.randomUUID();
+    const pending = { machine: "m1", terminalId, provider: "codex", at: Date.now() };
+    const claimed = agent("waiting_for_approval", false, "unsupported", "codex", "m1", terminalId);
+    prunePendingAgents([pending], [], [claimed]);
+    expect(attentionAgents([claimed])).toHaveLength(0);
+    expect(needsAgents([claimed])).toHaveLength(0);
   });
 });

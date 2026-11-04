@@ -1,17 +1,24 @@
 import { providerFeatures } from "./appSelectors.js";
 import { byId } from "./dom.js";
 import { agentContext, agentState, agentTitle, providerMark } from "./model.js";
+import { agentStarting } from "./pendingAgents.js";
 import { row } from "./rows.js";
 import { getState } from "./store.js";
 import type { Agent } from "./types.js";
+
+function starting(agent: Agent): boolean {
+  const address = agent.terminal?.address;
+  return address ? agentStarting(address.machine, address.terminal_id) : false;
+}
 
 /** Agents that need the user: approval, an answer, or a finished turn. */
 export function attentionAgents(agents: Agent[]): Agent[] {
   return agents.filter(
     (agent) =>
-      agent.activity === "waiting_for_approval" ||
-      agent.activity === "waiting_for_input" ||
-      answerable(agent),
+      !starting(agent) &&
+      (agent.activity === "waiting_for_approval" ||
+        agent.activity === "waiting_for_input" ||
+        answerable(agent)),
   );
 }
 
@@ -34,9 +41,24 @@ export function terminalApproval(agent: Agent): boolean {
   return features?.interaction !== "typed";
 }
 
+/** A finished turn that waits for native terminal input. */
+export function terminalInput(agent: Agent): boolean {
+  if (agent.activity !== "waiting_for_input" || answerable(agent)) return false;
+  const features = providerFeatures(
+    getState(),
+    agent.cursor?.target?.address?.machine,
+    agent.provider?.kind,
+  );
+  return features?.interaction !== "typed";
+}
+
 /** Agents whose current approval or interaction should appear under Needs you. */
 export function needsAgents(agents: Agent[]): Agent[] {
-  return agents.filter((agent) => answerable(agent) || terminalApproval(agent));
+  return agents.filter(
+    (agent) =>
+      !starting(agent) &&
+      (answerable(agent) || terminalApproval(agent) || terminalInput(agent)),
+  );
 }
 
 export function renderAttention(agents: Agent[]): void {
@@ -55,7 +77,7 @@ export function renderAttention(agents: Agent[]): void {
         agentState(agent),
         false,
       );
-      if (terminalApproval(agent)) {
+      if (terminalApproval(agent) || terminalInput(agent)) {
         item.querySelector("button")?.setAttribute("data-lens", "terminal");
       }
       return item;

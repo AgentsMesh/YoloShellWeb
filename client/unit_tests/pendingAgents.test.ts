@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   addPendingAgent,
+  agentStarting,
   prunePendingAgents,
   type PendingAgent,
 } from "../browser/pendingAgents";
@@ -36,6 +37,17 @@ describe("pending agent rows", () => {
 
   test("drops the pending row once a real agent claims the terminal", () => {
     expect(prunePendingAgents([pending], [terminal], [agent as any])).toEqual([]);
+  });
+
+  test("keeps a claimed creation in the starting grace briefly", () => {
+    const machine = crypto.randomUUID();
+    const terminalId = crypto.randomUUID();
+    const p = { ...pending, machine, terminalId };
+    const t = { address: { machine, terminal_id: terminalId }, runtime: { status: "running" } };
+    const a = { terminal: { address: { machine, terminal_id: terminalId } } };
+    expect(prunePendingAgents([p], [t], [a as any])).toEqual([]);
+    expect(agentStarting(machine, terminalId)).toBe(true);
+    expect(agentStarting(machine, terminalId, Date.now() + 6_000)).toBe(false);
   });
 
   test("drops a pending row when the catalogue reports its terminal ended", () => {

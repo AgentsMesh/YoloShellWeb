@@ -11,8 +11,26 @@ export type PendingAgent = {
 };
 
 const PENDING_GRACE_MS = 90_000;
+const STARTING_GRACE_MS = 5_000;
 
 const KEY = "yolo-pending-agents";
+const starting = new Map<string, number>();
+
+function key(machine: string, terminalId: string): string {
+  return `${machine}:${terminalId}`;
+}
+
+/** A just-claimed creation may still be delivering its first prompt. */
+export function agentStarting(machine: string, terminalId: string, now = Date.now()): boolean {
+  const value = key(machine, terminalId);
+  const at = starting.get(value);
+  if (at === undefined) return false;
+  if (now - at >= STARTING_GRACE_MS) {
+    starting.delete(value);
+    return false;
+  }
+  return true;
+}
 
 export function loadPendingAgents(): PendingAgent[] {
   try {
@@ -61,6 +79,9 @@ export function prunePendingAgents(
   agents: Agent[],
   now = Date.now(),
 ): PendingAgent[] {
+  for (const [value, at] of starting) {
+    if (now - at >= STARTING_GRACE_MS) starting.delete(value);
+  }
   const byKey = new Map(
     terminals.map((terminal) => [
       `${terminal.address?.machine}:${terminal.address?.terminal_id}`,
@@ -74,9 +95,12 @@ export function prunePendingAgents(
     ),
   );
   return pending.filter((agent) => {
-    const key = `${agent.machine}:${agent.terminalId}`;
-    if (claimed.has(key)) return false;
-    const terminal = byKey.get(key);
+    const value = key(agent.machine, agent.terminalId);
+    if (claimed.has(value)) {
+      starting.set(value, now);
+      return false;
+    }
+    const terminal = byKey.get(value);
     if (terminal) {
       const status = terminal.runtime?.status ?? "";
       return ["starting", "running", "output_blocked", "finalizing"].includes(status);

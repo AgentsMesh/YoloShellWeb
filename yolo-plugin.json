@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "web.client",
   "name": "Yolo Web Client",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Read-only trusted web client canary for Yolo",
   "platforms": ["linux", "macos"],
   "startup": {"command": ["bun", "client/scripts/plugin.ts", "start"]},
