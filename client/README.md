@@ -4,6 +4,9 @@ This is the first trusted plugin canary. It is a user-level Bun process; it has
 no sandbox, owns its daemon and serves its own HTTP UI. The canary currently binds
 `0.0.0.0` so a trusted LAN can reach it; this is a temporary mode.
 
+For a released version, run `yolo plugin install web.client --trust`. The
+commands below link a local checkout for development.
+
 ```sh
 # from this repository root, with YoloShell installed
 yolo plugin link "$PWD/client" --trust

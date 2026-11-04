@@ -15,13 +15,20 @@ management socket and Hub token never reach the browser.
 ## Install
 
 ```sh
-git clone https://github.com/AgentsMesh/YoloShellWeb.git
-cd YoloShellWeb
-yolo plugin link "$PWD/client" --trust
+yolo plugin install web.client --trust
 yolo plugin startup
 cat "$(yolo plugin data-dir web.client)/token"
 # open the printed URL and paste the token
 yolo plugin action web.client status
+```
+
+`plugin install` resolves the version from `AgentsMesh/YoloShellPlugins`,
+verifies the pinned source commit and manifest, and links only after the
+explicit `--trust` preview. For local development, clone this repository and
+use:
+
+```sh
+yolo plugin link "$PWD/YoloShellWeb/client" --trust
 ```
 
 See [client/README.md](client/README.md) for the plugin behavior, routes,
