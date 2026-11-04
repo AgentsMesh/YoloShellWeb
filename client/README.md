@@ -9,7 +9,7 @@ commands below link a local checkout for development.
 
 ```sh
 # from this repository root, with YoloShell installed
-yolo plugin link "$PWD/client" --trust
+yolo plugin link "$PWD" --trust
 export YOLO_PLUGIN_PORT=4199
 export YOLO_HUB_SOCKET=/path/to/hub.sock YOLO_HUB_ID=<hub-id>
 yolo plugin startup

@@ -4,7 +4,8 @@ Trusted web client plugin for [YoloShell](https://github.com/AgentsMesh/YoloShel
 It is a user-level Bun process that links into Yolo's local plugin registry and
 serves an authenticated browser UI.
 
-- `client/`: plugin manifest, Bun server, browser UI, unit tests and e2e scripts.
+- `yolo-plugin.json`: trusted plugin manifest.
+- `client/`: Bun server, browser UI, unit tests and e2e scripts.
 - `sdk/`: public Hub JSON-RPC client used by the plugin.
 
 This is the supported web client path for YoloShell. The plugin runs as a
@@ -28,7 +29,7 @@ explicit `--trust` preview. For local development, clone this repository and
 use:
 
 ```sh
-yolo plugin link "$PWD/YoloShellWeb/client" --trust
+yolo plugin link "$PWD/YoloShellWeb" --trust
 ```
 
 See [client/README.md](client/README.md) for the plugin behavior, routes,

@@ -69,6 +69,15 @@ async function ready(value: State): Promise<boolean> {
   return false;
 }
 
+async function streamText(stream: ReadableStream<Uint8Array> | number | undefined): Promise<string> {
+  if (!(stream instanceof ReadableStream)) return "";
+  const text = await Promise.race([
+    new Response(stream).text(),
+    Bun.sleep(1000).then(() => ""),
+  ]);
+  return text.trim().slice(0, 2000);
+}
+
 async function start() {
   const current = state();
   if (current && alive(current) && (await health(current))) {
@@ -111,7 +120,7 @@ async function start() {
     },
     stdin: "ignore",
     stdout: "ignore",
-    stderr: "ignore",
+    stderr: "pipe",
   });
   child.unref?.();
   const next = { pid: child.pid, port: selected, instance };
@@ -123,8 +132,11 @@ async function start() {
     } catch {
       // the child already exited
     }
+    const detail = await streamText(child.stderr);
     rmSync(statePath);
-    throw new Error("web server did not become ready");
+    throw new Error(
+      `web server did not become ready on port ${selected}${detail ? `: ${detail}` : ""}`,
+    );
   }
   console.log(`started at http://127.0.0.1:${selected}`);
   for (const url of lanUrls(selected)) console.log(`LAN: ${url}`);
