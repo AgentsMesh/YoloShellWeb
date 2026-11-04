@@ -26,8 +26,9 @@ yolo plugin action web.client status
 
 `plugin install` resolves the version from `AgentsMesh/YoloShellPlugins`,
 verifies the pinned source commit and manifest, and links only after the
-explicit `--trust` preview. For local development, clone this repository and
-use:
+explicit `--trust` preview. Installing over a linked version stops and restarts
+a running plugin when its manifest declares a `stop` action. For local
+development, clone this repository and use:
 
 ```sh
 yolo plugin link "$PWD/YoloShellWeb" --trust
