@@ -32,6 +32,8 @@ use:
 yolo plugin link "$PWD/YoloShellWeb" --trust
 ```
 
+The plugin is a Bun process; `bun` must be on `PATH` when Yolo starts it.
+
 See [client/README.md](client/README.md) for the plugin behavior, routes,
 security model and temporary LAN access.
 
