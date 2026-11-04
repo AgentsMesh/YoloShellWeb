@@ -21,6 +21,9 @@ yolo plugin action web.client status
 yolo plugin action web.client stop
 ```
 
+The token persists across restarts; delete the token file before starting the
+plugin to rotate it.
+
 The server acquires a private `broker.lock` in the plugin data directory before
 listening. A second process pointed at the same data directory exits before it
 opens the Hub, because the creation journal and local controller projection are

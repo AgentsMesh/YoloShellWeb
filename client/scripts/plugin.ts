@@ -78,6 +78,24 @@ async function streamText(stream: ReadableStream<Uint8Array> | number | undefine
   return text.trim().slice(0, 2000);
 }
 
+function loadOrCreateToken(): string {
+  try {
+    const token = readFileSync(tokenPath, "utf8").trim();
+    if (/^[0-9a-f]{64}$/.test(token)) {
+      chmodSync(tokenPath, 0o600);
+      return token;
+    }
+  } catch {
+    // absent or unreadable: create a new token below
+  }
+  const token = [...crypto.getRandomValues(new Uint8Array(32))]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  writeFileSync(tokenPath, token, { mode: 0o600 });
+  chmodSync(tokenPath, 0o600);
+  return token;
+}
+
 async function start() {
   const current = state();
   if (current && alive(current) && (await health(current))) {
@@ -87,14 +105,10 @@ async function start() {
   }
   mkdirSync(data, { recursive: true, mode: 0o700 });
   chmodSync(data, 0o700);
-  const token = [...crypto.getRandomValues(new Uint8Array(32))]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  const token = loadOrCreateToken();
   const instance = [...crypto.getRandomValues(new Uint8Array(16))]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-  writeFileSync(tokenPath, token, { mode: 0o600 });
-  chmodSync(tokenPath, 0o600);
   let selected: number | null = null;
   for (let candidate = portStart; candidate < portStart + 20; candidate += 1) {
     try {
