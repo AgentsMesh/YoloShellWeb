@@ -76,11 +76,17 @@ export function chooseCreated(machine: string, id: string): void {
   syncWatch();
 }
 
+export function expireCreated(machine: string, id: string): void {
+  const before = getState();
+  if (dispatch({ type: "selection/expire", machine, id }) === before) return;
+  autoSelect();
+  renderPane();
+}
+
 export function restoreSelection(): boolean {
   const value = rememberedSelection();
   if (!value) return false;
   choose(value.kind, value.id, false, value.machine);
-  if (!selected(getState())) choose(value.kind, value.id, false);
   return selected(getState()) !== null;
 }
 

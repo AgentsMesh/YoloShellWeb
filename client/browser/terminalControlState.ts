@@ -11,7 +11,8 @@ export type TakeIntent = "none" | "take";
 export type Effect =
   | { kind: "take" }
   | { kind: "release" }
-  | { kind: "input"; data: Uint8Array }
+  | { kind: "discardInput"; reason: string }
+  | { kind: "flushInput" }
   | { kind: "stdin"; enabled: boolean }
   | { kind: "focus" }
   | { kind: "fit" }
@@ -28,8 +29,6 @@ export type Machine = {
   autoTake: boolean;
   otherController: boolean;
   viewers: number;
-  pending: Uint8Array[];
-  bytes: number;
   disposed: boolean;
 };
 
@@ -43,8 +42,6 @@ export function initial(autoTake: boolean): Machine {
     autoTake,
     otherController: false,
     viewers: 1,
-    pending: [],
-    bytes: 0,
     disposed: false,
   };
 }
@@ -55,18 +52,6 @@ export function leaseKnown(machine: Machine): boolean {
 
 export function wants(machine: Machine): boolean {
   return machine.intent === "take";
-}
-
-export function clearPending(machine: Machine): Machine {
-  return { ...machine, pending: [], bytes: 0 };
-}
-
-export function flush(machine: Machine): { machine: Machine; effects: Effect[] } {
-  if (machine.lease !== "controlled" || machine.stream !== "live") {
-    return { machine, effects: [] };
-  }
-  const effects: Effect[] = machine.pending.map((data) => ({ kind: "input", data }));
-  return { machine: clearPending(machine), effects };
 }
 
 export function reset(machine: Machine): { machine: Machine; effects: Effect[] } {
@@ -80,10 +65,8 @@ export function reset(machine: Machine): { machine: Machine; effects: Effect[] }
       takeSent: false,
       otherController: false,
       viewers: 1,
-      pending: [],
-      bytes: 0,
     },
-    effects: [{ kind: "stdin", enabled: !machine.disposed }],
+    effects: [{ kind: "discardInput", reason: "the terminal disconnected" }, { kind: "stdin", enabled: !machine.disposed }],
   };
 }
 
@@ -93,20 +76,20 @@ export function setStream(
   seeding: boolean,
 ): { machine: Machine; effects: Effect[] } {
   const stream: StreamPhase = seeding ? "seeding" : live ? "live" : "connecting";
-  let next = { ...machine, stream };
+  const next = { ...machine, stream };
   const effects: Effect[] = [{ kind: "stdin", enabled: !next.disposed }];
-  if (live && !seeding) {
-    const flushed = flush(next);
-    next = flushed.machine;
-    effects.push(...flushed.effects);
-    if (next.lease === "controlled") effects.push({ kind: "fit" });
+  if (machine.stream === "live" && stream !== "live") {
+    effects.push({ kind: "discardInput", reason: "the terminal stream changed" });
+  }
+  if (stream === "live" && next.lease === "controlled") {
+    effects.push({ kind: "flushInput" }, { kind: "fit" });
   }
   effects.push({ kind: "render" });
   return { machine: next, effects };
 }
 
 export function dispose(machine: Machine): Machine {
-  return { ...clearPending(machine), disposed: true };
+  return { ...machine, disposed: true };
 }
 
 export function presentation(machine: Machine): ControlPresentation {

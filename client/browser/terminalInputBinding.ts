@@ -1,5 +1,6 @@
 import type { TerminalControl } from "./terminalControl.js";
-import type { Xterm } from "./terminalXterm.js";
+import type { PasteSource } from "./terminalInput.js";
+import type { Xterm, XtermKey } from "./terminalXterm.js";
 
 const ESCAPE = 0x1b;
 const PASTE_START = [0x1b, 0x5b, 0x32, 0x30, 0x30, 0x7e];
@@ -7,31 +8,49 @@ const PASTE_END = [0x1b, 0x5b, 0x32, 0x30, 0x31, 0x7e];
 
 /**
  * xterm answers terminal queries through onData as well. Query replies are
- * forwarded only while the view holds the lease. Printable input while
- * observing is user intent; an observing paste is dropped whole because its
- * bracketed markers cannot be safely split or truncated.
+ * sent immediately on a live lease. onKey identifies keyboard escape
+ * sequences. Explicit clipboard events retain their full paste until delivery.
  */
 export class TerminalInputBinding {
   private pasteOpen = false;
+  private inserting = false;
+  private key: XtermKey | undefined;
 
   constructor(private readonly control: TerminalControl) {}
 
-  attach(term: Xterm): void {
-    term.onData((data) => this.send(new TextEncoder().encode(data)));
+  attach(term: Pick<Xterm, "onKey" | "onData" | "onBinary">): void {
+    // xterm fires onKey immediately before onData within the same DOM key event.
+    term.onKey((key) => { this.key = key; });
+    term.onData((data) => {
+      const typedKey = this.key?.key === data && this.key.domEvent.eventPhase !== Event.NONE;
+      this.key = undefined;
+      this.send(new TextEncoder().encode(data), typedKey);
+    });
     term.onBinary((data) =>
-      this.send(Uint8Array.from([...data].map((character) => character.charCodeAt(0)))),
+      this.control.writeNow(Uint8Array.from(data, (character) => character.charCodeAt(0))),
     );
+  }
+
+  paste(term: Pick<Xterm, "paste">, source: PasteSource): void {
+    this.control.paste(source, (value) => {
+      this.inserting = true;
+      try { term.paste(value); }
+      finally { this.inserting = false; }
+    });
   }
 
   /** Forgets an unfinished observing paste across a reconnect. */
   reset(): void {
     this.pasteOpen = false;
+    this.key = undefined;
   }
 
-  private send(data: Uint8Array): void {
-    if (this.control.controlled) {
+  private send(data: Uint8Array, typedKey: boolean): void {
+    if (this.inserting) { this.control.writeNow(data); return; }
+    if (this.control.controlled || typedKey) {
       this.pasteOpen = false;
-      this.control.input(data);
+      if (typedKey || data[0] !== ESCAPE) this.control.input(data);
+      else this.control.writeNow(data);
       return;
     }
     if (this.pasteOpen) {

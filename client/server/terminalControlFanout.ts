@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from "bun";
-import type { TerminalControlFrame, WireLeaseState } from "../shared/protocol";
+import { TERMINAL_DETACHED, type TerminalControlFrame, type WireLeaseState } from "../shared/protocol";
 
 type Sink = { ws: ServerWebSocket<unknown>; clientId: string };
 export type LeaseState = WireLeaseState;
@@ -10,6 +10,8 @@ export class TerminalControlFanout {
   private controller: string | null = null;
   private acquiringClient: string | null = null;
   private state: LeaseState = "observing";
+
+  constructor(private readonly discardInput: () => boolean) {}
 
   get count(): number {
     return this.sinks.size;
@@ -24,22 +26,27 @@ export class TerminalControlFanout {
     return this.controller === clientId || this.acquiringClient === clientId;
   }
 
+  has(ws: ServerWebSocket<unknown>, clientId: string): boolean {
+    return this.sinks.get(clientId)?.ws === ws;
+  }
+
   add(ws: ServerWebSocket<unknown>, clientId: string): void {
     const previous = this.sinks.get(clientId);
-    if (previous && previous.ws !== ws) this.sinks.delete(clientId);
     this.sinks.set(clientId, { ws, clientId });
+    if (previous && previous.ws !== ws) {
+      if (clientId === this.controller) this.discardWriterInput(previous.ws);
+      previous.ws.close(1000, "control replaced");
+    }
     this.send(ws, { type: "ready" });
     this.sendLease(clientId);
     this.sendPresence();
   }
 
   remove(ws: ServerWebSocket<unknown>, clientId: string): boolean {
-    const sink = this.sinks.get(clientId);
-    if (!sink || sink.ws !== ws) return false;
+    if (!this.has(ws, clientId)) return false;
     this.sinks.delete(clientId);
-    if (this.controller === clientId) {
-      this.controller = null;
-      this.broadcastLease();
+    if (this.owns(clientId)) {
+      this.observe();
       return true;
     }
     this.broadcastPresence();
@@ -47,14 +54,14 @@ export class TerminalControlFanout {
   }
 
   assign(clientId: string): void {
-    this.controller = clientId;
+    this.setController(clientId);
     this.acquiringClient = null;
     this.state = "controlled";
     this.broadcastLease();
   }
 
   acquire(clientId: string): void {
-    this.controller = null;
+    this.setController(null);
     this.acquiringClient = clientId;
     this.state = "acquiring";
     this.broadcastLease();
@@ -68,21 +75,21 @@ export class TerminalControlFanout {
   }
 
   release(): void {
-    this.controller = null;
+    this.setController(null);
     this.acquiringClient = null;
     this.state = "released";
     this.broadcastLease();
   }
 
   lost(): void {
-    this.controller = null;
+    this.setController(null);
     this.acquiringClient = null;
     this.state = "lost";
     this.broadcastLease();
   }
 
   observe(): void {
-    this.controller = null;
+    this.setController(null);
     this.acquiringClient = null;
     this.state = "observing";
     this.broadcastLease();
@@ -90,6 +97,29 @@ export class TerminalControlFanout {
 
   error(message: string): void {
     for (const sink of this.sinks.values()) this.send(sink.ws, { type: "error", message });
+  }
+
+  close(): void {
+    for (const sink of this.sinks.values()) sink.ws.close(1000, TERMINAL_DETACHED);
+    this.sinks.clear();
+    this.setController(null);
+    this.acquiringClient = null;
+  }
+
+  private setController(clientId: string | null): void {
+    if (this.controller !== null && this.controller !== clientId) {
+      this.discardWriterInput(this.sinks.get(this.controller)?.ws);
+    }
+    this.controller = clientId;
+  }
+
+  private discardWriterInput(ws?: ServerWebSocket<unknown>): void {
+    if (this.discardInput() && ws) {
+      this.send(ws, {
+        type: "error",
+        message: "Terminal control changed while sending input. Unsent input was discarded. Check the terminal before typing again.",
+      });
+    }
   }
 
   private broadcastLease(): void {

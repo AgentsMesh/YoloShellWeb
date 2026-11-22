@@ -47,9 +47,24 @@ describe("machine view privacy", () => {
       create: true,
       agent_start: true,
       terminal_lifecycle: true,
+      stage_attachment: false,
     });
     expect((view.terminals[0] as any).runtime.target.address.machine).toBe(machineFor(HUB));
     expect(JSON.stringify(view)).not.toContain(HUB);
     expect((view.agents[0] as any).cursor.target.address.machine).toBe(machineFor(HUB));
+  });
+
+  test("evicts finished rows and their agents while a blocked shell titled exit stays live", () => {
+    const shell = (id: string, status: string) => ({
+      address: { terminal_id: id }, presentation: { title: "exit" }, runtime: { status },
+    });
+    const rows = machineView({
+      hub: HUB, entry: true, reachable: true, freshness: "live", epoch: "a1", revision: 3, methods: [],
+      terminals: [shell("blocked", "output_blocked"), shell("gone", "exited"),
+        shell("lost", "lost"), { ...shell("archived", "running"), archived: true }],
+      agents: ["gone", "blocked"].map((id) => ({ terminal: { address: { terminal_id: id } } })),
+    });
+    expect(rows.terminals.map((t: any) => t.address.terminal_id)).toEqual(["blocked"]);
+    expect(rows.agents.map((a: any) => a.terminal.address.terminal_id)).toEqual(["blocked"]);
   });
 });

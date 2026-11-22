@@ -5,6 +5,11 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const MUTATION_TIMEOUT_MS = 60_000;
 let token = "";
 
+export function socketUrl(path: string): string {
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  return `${scheme}://${location.host}${path}`;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -58,14 +63,14 @@ async function failure(response: Response): Promise<ApiError> {
   return new ApiError(response.status, message);
 }
 
-async function request(path: string, body?: unknown, timeout = REQUEST_TIMEOUT_MS): Promise<any> {
+async function request(path: string, body?: unknown, timeout = REQUEST_TIMEOUT_MS, signal?: AbortSignal): Promise<any> {
   const headers: Record<string, string> = { authorization: `Bearer ${token}` };
   if (body !== undefined) headers["content-type"] = "application/json";
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(timeout),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout),
   });
   if (!response.ok) throw await failure(response);
   return response.json();
@@ -87,9 +92,11 @@ async function binary(
 }
 
 export const api = {
+  stageAttachment: (body: unknown, signal?: AbortSignal) => request("/api/attachments", body, MUTATION_TIMEOUT_MS, signal),
   inventory: () => request("/api/inventory"),
   conversation: (body: unknown): Promise<ConversationResult> =>
     request("/api/conversation", body),
+  cancel: (body: unknown) => request("/api/cancel", body),
   respond: (body: unknown): Promise<any> => request("/api/respond", body),
   prompt: (body: unknown) => request("/api/prompt", body),
   createShell: (body: unknown) => request("/api/shells", body, MUTATION_TIMEOUT_MS),

@@ -1,5 +1,7 @@
+import { copySelection } from "./selectionClipboard.js";
 import { byId } from "./dom.js";
 import { loadToken } from "./api.js";
+import { bindTerminalFiles } from "./terminalFiles.js";
 import { TerminalChrome } from "./terminalChrome.js";
 import { TerminalControl } from "./terminalControl.js";
 import { TerminalInputBinding } from "./terminalInputBinding.js";
@@ -7,10 +9,9 @@ import { reconnectDelay } from "./terminalReconnect.js";
 import { TERMINAL_OPTIONS } from "./terminalTheme.js";
 import { TerminalSockets, type TerminalTarget } from "./terminalSocket.js";
 import type { TerminalOutputFrame } from "../shared/protocol.js";
-import { FitCtor, TerminalCtor, type Xterm } from "./terminalXterm.js";
+import { FitCtor, TerminalCtor, observeTerminalSize, type Xterm } from "./terminalXterm.js";
 import {
   begin,
-  finish,
   initial,
   isSeeding,
   seed,
@@ -22,10 +23,11 @@ export class TerminalView {
   private readonly chrome = new TerminalChrome();
   private readonly control: TerminalControl;
   private readonly input: TerminalInputBinding;
+  private readonly files = new AbortController();
   private term: Xterm | null = null;
   private fit: { fit(): void } | null = null;
   private sockets: TerminalSockets | null = null;
-  private observer: ResizeObserver | null = null;
+  private observer: { disconnect(): void } | null = null;
   private disposed = false;
   private stream = initial();
   private reconnectAttempts = 0;
@@ -33,13 +35,15 @@ export class TerminalView {
 
   constructor(
     private readonly target: TerminalTarget,
-    autoTake = false,
+    autoTake: boolean,
+    private readonly stopped: (exited: boolean, message: string) => void,
   ) {
     this.control = new TerminalControl(
       {
         sendTake: () => this.sockets?.take(),
         sendRelease: () => this.sockets?.release(),
         sendInput: (data) => this.sockets?.input(data),
+        setInputNotice: (text) => this.chrome.setInputNotice(text),
         setStdin: (enabled) => { if (this.term) this.term.options.disableStdin = !enabled; },
         setStatus: (text, active) => this.chrome.setStatus(text, active),
         showTake: (visible) => this.chrome.showTake(visible),
@@ -55,7 +59,7 @@ export class TerminalView {
 
   open(): void {
     if (!this.host || !TerminalCtor || !FitCtor) {
-      this.fail("Terminal emulator is unavailable");
+      this.stopped(false, "Terminal emulator is unavailable");
       return;
     }
     const term = new TerminalCtor({ ...TERMINAL_OPTIONS, cols: 80, rows: 24 }) as Xterm;
@@ -65,20 +69,22 @@ export class TerminalView {
     this.term = term;
     this.fit = fit;
     this.input.attach(term);
+    bindTerminalFiles(this.host, term, this.target, (source) => this.input.paste(term, source), this.files.signal);
+    copySelection(term, () => this.chrome.showError("Use your browser’s Copy command for this selection."));
     term.onResize(({ cols, rows }) => {
       if (!this.control.controlled || isSeeding(this.stream)) return;
       this.chrome.setSize(`${cols}×${rows}`);
       this.sockets?.resize(cols, rows);
     });
     this.host.onclick = () => {
+      if (term.getSelection()) return;
       term.focus();
       this.control.requestControl();
     };
     this.chrome.onTake(() => this.control.requestControl());
-    this.observer = new ResizeObserver(() => {
+    this.observer = observeTerminalSize(this.host, () => {
       if (this.control.controlled && !isSeeding(this.stream)) this.fitNow();
     });
-    this.observer.observe(this.host);
     this.openSockets();
   }
 
@@ -95,6 +101,7 @@ export class TerminalView {
 
   dispose(): void {
     this.disposed = true;
+    this.files.abort();
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     this.observer?.disconnect();
@@ -112,7 +119,7 @@ export class TerminalView {
   private openSockets(): void {
     const token = loadToken();
     if (!token) {
-      this.fail("Terminal access token is unavailable");
+      this.stopped(false, "Terminal access token is unavailable");
       return;
     }
     this.stream = begin(this.stream);
@@ -127,31 +134,25 @@ export class TerminalView {
   }
 
   private onOutput(message: TerminalOutputFrame): void {
-    if (message?.type === "ready") {
+    if (message?.type === "ready" || message?.type === "reset") {
       this.stream = seed(this.stream);
+      this.control.setStream(false, true);
+      this.input.reset();
       this.term?.reset();
-      if (typeof message.cols === "number" && typeof message.rows === "number") {
+      if (message.type === "ready" && typeof message.cols === "number" && typeof message.rows === "number") {
         this.term?.resize(message.cols, message.rows);
         this.chrome.setSize(`${message.cols}×${message.rows}`);
       }
-      this.control.setStream(false, true);
     } else if (message?.type === "live") {
       const generation = this.stream.generation;
       this.term?.write("", () => this.live(generation));
-    } else if (message?.type === "reset") {
-      this.stream = seed(this.stream);
-      this.term?.reset();
-      this.control.setStream(false, true);
+
     } else if (message?.type === "exit") {
-      this.stream = finish(this.stream, "ended");
-      this.control.setStream(false, false);
-      this.chrome.setStatus("Session exited");
+      this.stopped(true, "");
     } else if (message?.type === "unreachable") {
-      this.stream = finish(this.stream, "ended");
-      this.control.setStream(false, false);
-      this.chrome.setStatus("Terminal is unreachable");
+      this.stopped(false, "The machine is unreachable.");
     } else if (message?.type === "error") {
-      this.fail(message.message || "Terminal stream failed");
+      this.stopped(false, message.message || "Terminal stream failed");
     }
   }
 
@@ -187,12 +188,5 @@ export class TerminalView {
     } catch {
       // The pane may be hidden while the view is being disposed.
     }
-  }
-
-  private fail(message: string): void {
-    this.stream = finish(this.stream, "failed");
-    this.control.setStream(false, false);
-    this.chrome.showError(message);
-    this.chrome.setStatus(message);
   }
 }

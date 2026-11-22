@@ -1,3 +1,5 @@
+import { finishedTerminal, type TerminalPhase } from "../shared/terminalLifecycle";
+import { agentKey, terminalKey, unobserved } from "./catalogueRows";
 import { labelFor, machineFor } from "./machineHandles";
 import type { ProviderFeatures } from "../shared/protocol";
 
@@ -7,6 +9,7 @@ export type MachineCapabilities = {
   create?: boolean;
   agent_start?: boolean;
   terminal_lifecycle?: boolean;
+  stage_attachment?: boolean;
 };
 export type ProviderOption = {
   provider_id: string;
@@ -98,8 +101,23 @@ export function machineView(input: {
   providers?: ProviderOption[];
   terminals: unknown[];
   agents: unknown[];
-}): MachineView {
+}, previous: Pick<MachineView, "terminals" | "agents"> = { terminals: [], agents: [] }): MachineView {
   const methods = new Set(input.methods);
+  const ended = new Set<string>();
+  const terminals = input.terminals.filter((value) => {
+    const row = value as (TerminalPhase & { address?: { terminal_id?: string } }) | null;
+    if (!row) return false;
+    if (!row.archived && !finishedTerminal(row)) return true;
+    if (row.address?.terminal_id) ended.add(row.address.terminal_id);
+    return false;
+  });
+  const observed = input.agents.map((value) => agentView(value, input.hub));
+  const retained = unobserved(previous.agents, observed, agentKey)
+    .map((value) => ({ ...value as object, freshness: "stale" }));
+  const agents = [...observed, ...retained].filter((value) => {
+    const agent = value as { lifecycle?: { state?: string }; terminal?: { address?: { terminal_id?: string } } } | null;
+    return agent?.lifecycle?.state !== "exited" && !ended.has(agent?.terminal?.address?.terminal_id ?? "");
+  });
   return {
     machine: machineFor(input.hub),
     label: labelFor(input.hub, input.label),
@@ -112,9 +130,11 @@ export function machineView(input: {
       create: methods.has("create"),
       agent_start: methods.has("agent_start"),
       terminal_lifecycle: methods.has("terminal"),
+      stage_attachment: methods.has("stage_attachment"),
     },
     providers: input.providers ?? [],
-    terminals: input.terminals.map((value) => terminalView(value, input.hub)),
-    agents: input.agents.map((value) => agentView(value, input.hub)),
+    terminals: terminals.map((value) => terminalView(value, input.hub))
+      .concat(unobserved(previous.terminals, input.terminals, terminalKey)),
+    agents,
   };
 }

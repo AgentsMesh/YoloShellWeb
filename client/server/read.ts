@@ -1,3 +1,4 @@
+import type { ChatAddress } from "../../sdk/src/chatTypes";
 import { HubError } from "../../sdk/src/hub.ts";
 import { ApiError } from "./errors";
 import { read, watch } from "./hub";
@@ -17,14 +18,15 @@ function unavailable(error: unknown): { available: false; reason: string } | nul
 export async function conversation(body: Record<string, unknown>): Promise<unknown> {
   const binding = agentTarget(body);
   const destination = binding.agent.address.hub_id;
-  let address: unknown;
+  const chat = body.format === "chat_v1";
+  let address: ChatAddress | undefined;
   try {
     const reply = (await read(destination, (hub) =>
-      hub.resolveConversation(binding, destination),
+      chat ? hub.chat.open(binding, destination) : hub.resolveConversation(binding, destination),
     )) as {
-      conversation?: { address?: unknown };
+      conversation?: { address?: ChatAddress }; address?: ChatAddress;
     };
-    address = reply.conversation?.address;
+    address = reply.address ?? reply.conversation?.address;
     if (!address) throw new ApiError(502, "Conversation descriptor is missing");
   } catch (error) {
     const missing = unavailable(error);
@@ -41,7 +43,7 @@ export async function conversation(body: Record<string, unknown>): Promise<unkno
   };
   try {
     const reply = (await watch(destination, (hub) =>
-      hub.watchConversation(request, 1000, destination),
+      chat ? hub.chat.read(request, destination, 1000) : hub.watchConversation(request, 1000, destination),
     )) as Reading;
     if (!reply.reading) throw new ApiError(502, "Conversation read is missing");
     return { available: true, reading: reply.reading };

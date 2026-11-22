@@ -37,27 +37,15 @@ describe("terminal control machine", () => {
     expect(step.machine.takeSent).toBe(true);
   });
 
-  test("a controlled lease flushes buffered input and fits once live", () => {
-    let machine = initial(false);
-    machine = setStream(machine, true, false).machine;
+  test("a granted takeover fits and focuses the live terminal", () => {
+    let machine = setStream(initial(false), true, false).machine;
     machine = ready(machine).machine;
     machine = lease(machine, { state: "observing" }).machine;
     machine = requestControl(machine).machine;
-    const buffered = {
-      ...machine,
-      pending: [Uint8Array.from([1]), Uint8Array.from([2])],
-      bytes: 2,
-    };
-    const step = lease(buffered, {
-      state: "controlled",
-      controlled: true,
-      controller: true,
-      viewers: 1,
-    });
-    expect(step.effects).toContainEqual({ kind: "input", data: Uint8Array.from([1]) });
-    expect(step.effects).toContainEqual({ kind: "input", data: Uint8Array.from([2]) });
-    expect(step.effects).toContainEqual({ kind: "fit" });
-    expect(step.machine.pending).toEqual([]);
+    const step = lease(machine, { state: "controlled", controlled: true, controller: true });
+    expect(step.effects.map((effect) => effect.kind)).toEqual([
+      "clearError", "flushInput", "fit", "focus", "stdin", "render",
+    ]);
   });
 
   test("release publishes an explicit released lease", () => {

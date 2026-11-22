@@ -14,10 +14,12 @@ function note(text: string, kind = ""): void {
 }
 
 async function load(): Promise<void> {
-  if (!query) return;
+  const target = query;
+  if (!target) return;
   note("Loading terminal log…");
   try {
-    const result = await api.terminalLog(query);
+    const result = await api.terminalLog(target);
+    if (target !== query) return;
     const plain = terminalPlainText(result.data);
     byId("terminal-log-text").textContent = plain.text;
     const size =
@@ -28,6 +30,7 @@ async function load(): Promise<void> {
       `${size}${result.truncated || plain.truncated ? " · earlier output omitted" : ""}`,
     );
   } catch (error) {
+    if (target !== query) return;
     note(error instanceof Error ? error.message : "Could not read the terminal log", "bad");
   }
 }
@@ -65,4 +68,9 @@ export function bindTerminalLog(): void {
   byId("terminal-log").addEventListener("click", openTerminalLog);
   byId("terminal-log-refresh").addEventListener("click", () => void load());
   byId("terminal-log-close").addEventListener("click", close);
+  byId<HTMLDialogElement>("terminal-log-dialog").addEventListener("close", () => {
+    if (byId<HTMLDialogElement>("terminal-log-dialog").open) return;
+    query = null;
+    byId("terminal-log-text").textContent = "";
+  });
 }

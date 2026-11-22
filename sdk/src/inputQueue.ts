@@ -2,11 +2,13 @@ import { HubClient } from "./hub";
 import { HubError } from "./hubError.ts";
 import type { LeaseController } from "./leaseController";
 
-const MAX_INPUT_BYTES = 65_536;
+// Match the Rust terminal relay's block size for each acknowledged PTY write.
+const INPUT_BLOCK_BYTES = 8 * 1024;
 
 export class InputQueue {
   private readonly chunks: Uint8Array[] = [];
-  private flushing = false;
+  private activeRevision?: number;
+  private revision = 0;
 
   constructor(
     private readonly input: HubClient,
@@ -16,11 +18,19 @@ export class InputQueue {
   ) {}
 
   enqueue(data: Uint8Array): void {
-    for (let offset = 0; offset < data.byteLength; offset += MAX_INPUT_BYTES) {
-      const chunk = data.subarray(offset, Math.min(offset + MAX_INPUT_BYTES, data.byteLength));
+    for (let offset = 0; offset < data.byteLength; offset += INPUT_BLOCK_BYTES) {
+      const chunk = data.subarray(offset, Math.min(offset + INPUT_BLOCK_BYTES, data.byteLength));
       if (chunk.byteLength) this.chunks.push(Uint8Array.from(chunk));
     }
-    if (!this.flushing) void this.flush();
+    if (this.activeRevision === undefined) void this.flush();
+  }
+
+  /** An already issued mutation settles once. A new writer starts with fresh input. */
+  discardPending(): boolean {
+    const queued = this.chunks.length > 0 || this.activeRevision === this.revision;
+    this.revision++;
+    this.chunks.length = 0;
+    return queued;
   }
 
   async resize(cols: number, rows: number): Promise<void> {
@@ -45,30 +55,35 @@ export class InputQueue {
   }
 
   private async flush(): Promise<void> {
-    if (this.flushing) return;
-    this.flushing = true;
     try {
       while (this.chunks.length) {
-        if (!(await this.send(this.takeBatch()))) return;
+        const revision = this.revision;
+        this.activeRevision = revision;
+        try {
+          await this.send(this.takeBatch(), revision);
+        } catch (error) {
+          if (revision === this.revision) {
+            this.chunks.length = 0;
+            this.onError(error instanceof Error ? error : new Error("Terminal input failed"));
+          }
+        }
       }
     } finally {
-      this.flushing = false;
+      this.activeRevision = undefined;
     }
   }
 
   /**
-   * Collapse every chunk that queued behind one delivery into one request.
-   * Fast typing and backspace repeat otherwise become one Hub round trip per
-   * key, and the queue only grows while the first key is in flight.
+   * Coalesce small keystrokes behind an in-flight write, up to one PTY block.
    */
   private takeBatch(): Uint8Array {
     const first = this.chunks.shift()!;
-    if (first.byteLength >= MAX_INPUT_BYTES) return first;
+    if (first.byteLength >= INPUT_BLOCK_BYTES) return first;
     const parts = [first];
     let size = first.byteLength;
     while (this.chunks.length) {
       const next = this.chunks[0];
-      if (size + next.byteLength > MAX_INPUT_BYTES) break;
+      if (size + next.byteLength > INPUT_BLOCK_BYTES) break;
       parts.push(this.chunks.shift()!);
       size += next.byteLength;
     }
@@ -83,24 +98,16 @@ export class InputQueue {
   }
 
   /** A rejected lease is retried once after acquiring; delivery failures are not. */
-  private async send(data: Uint8Array): Promise<boolean> {
-    const grant = this.lease.currentGrant;
-    if (this.lease.state !== "controlled" || !grant) {
-      if (!(await this.recover(false))) return this.fail("Terminal control is not held");
+  private async send(data: Uint8Array, revision: number): Promise<void> {
+    if (this.lease.state !== "controlled" || !this.lease.currentGrant) {
+      if (!(await this.recover(false))) throw new Error("Terminal control is not held");
     }
+    if (revision !== this.revision) return;
     try {
       await this.deliver(data);
-      return true;
     } catch (error) {
-      if (isLeaseLoss(error) && (await this.recover(true))) {
-        try {
-          await this.deliver(data);
-          return true;
-        } catch (retry) {
-          return this.fail(retry);
-        }
-      }
-      return this.fail(error);
+      if (revision !== this.revision || !isLeaseLoss(error) || !(await this.recover(true))) throw error;
+      if (revision === this.revision) await this.deliver(data);
     }
   }
 
@@ -124,12 +131,6 @@ export class InputQueue {
     } catch {
       return false;
     }
-  }
-
-  private fail(error: unknown): boolean {
-    this.chunks.length = 0;
-    this.onError(error instanceof Error ? error : new Error("Terminal input failed"));
-    return false;
   }
 }
 

@@ -1,5 +1,6 @@
 import { apiGet } from "./apiRoutes";
-import { script, sharedScript, styles } from "./assets";
+import { stageAttachment } from "./attachment";
+import { script, sdkScript, sharedScript, styles } from "./assets";
 import { creationStats, startJob } from "./creationJobs";
 import { editLayout } from "./layoutEdit";
 import { poolStats } from "./hub";
@@ -14,6 +15,7 @@ import {
 import { respond } from "./interaction";
 import { runLifecycle } from "./lifecycle";
 import { page } from "./page";
+import { settingsPage } from "./settingsPage";
 import { conversation } from "./read";
 import { terminalActorCount } from "./terminalRegistry";
 import { vendorAsset } from "./vendor";
@@ -58,8 +60,8 @@ export async function route(
   if (url.pathname === "/icon.svg") {
     return headersFor(new Response(ICON, { headers: { "content-type": "image/svg+xml" } }));
   }
-  if (url.pathname === "/" && request.method === "GET") {
-    return headersFor(new Response(page, { headers: { "content-type": "text/html; charset=utf-8" } }));
+  if ((url.pathname === "/" || url.pathname === "/settings") && request.method === "GET") {
+    return headersFor(new Response(url.pathname === "/" ? page : settingsPage, { headers: { "content-type": "text/html; charset=utf-8" } }));
   }
   if (url.pathname === "/app.css" && request.method === "GET") {
     return headersFor(new Response(await styles(), { headers: { "content-type": "text/css; charset=utf-8" } }));
@@ -74,6 +76,11 @@ export async function route(
     if (source !== null) {
       return headersFor(new Response(source, { headers: { "content-type": "text/javascript; charset=utf-8" } }));
     }
+  }
+  const sdk = url.pathname.match(/^\/sdk\/src\/([A-Za-z]+)\.js$/);
+  if (sdk && request.method === "GET") {
+    const source = await sdkScript(sdk[1]);
+    if (source !== null) return headersFor(new Response(source, { headers: { "content-type": "text/javascript" } }));
   }
   const shared = url.pathname.match(/^\/shared\/([A-Za-z]+)\.js$/);
   if (shared && request.method === "GET") {
@@ -94,8 +101,12 @@ export async function route(
     switch (url.pathname) {
       case "/api/conversation":
         return json(await conversation(data));
+      case "/api/attachments":
+        return json(await stageAttachment(data));
       case "/api/prompt":
         return json(await prompt(data));
+      case "/api/cancel":
+        return json(await respond(data, undefined, "cancel"));
       case "/api/respond":
         return json(await respond(data));
       case "/api/shells":

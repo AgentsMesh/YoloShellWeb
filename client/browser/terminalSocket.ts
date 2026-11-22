@@ -1,5 +1,7 @@
+import { socketUrl } from "./api.js";
 import { clientId } from "./clientIdentity.js";
 import {
+  TERMINAL_DETACHED,
   WEB_PROTOCOL,
   type TerminalClientFrame,
   type TerminalControlFrame,
@@ -26,11 +28,6 @@ type Callbacks = {
 
 const INPUT_CHUNK = 64 * 1024;
 const ROLES: TerminalRole[] = ["output", "control"];
-
-function urlFor(path: string): string {
-  const scheme = location.protocol === "https:" ? "wss" : "ws";
-  return `${scheme}://${location.host}${path}`;
-}
 
 export class TerminalSockets {
   private readonly output: WebSocket;
@@ -86,7 +83,7 @@ export class TerminalSockets {
   }
 
   private open(path: string, role: TerminalRole): WebSocket {
-    const socket = new WebSocket(urlFor(path), WEB_PROTOCOL);
+    const socket = new WebSocket(socketUrl(path), WEB_PROTOCOL);
     socket.binaryType = "arraybuffer";
     socket.onopen = () => {
       this.lastSeen[role] = Date.now();
@@ -120,6 +117,9 @@ export class TerminalSockets {
     };
     socket.onerror = () => this.reportClosed(role);
     socket.onclose = (event) => {
+      // The output socket delivers the final frame. Its paired control socket
+      // can finish first, even when both were closed by the same actor.
+      if (role === "control" && event.code === 1000 && event.reason === TERMINAL_DETACHED) return;
       if (!this.disposed && !this.reported) this.callbacks.closed(role, event);
     };
     return socket;

@@ -42,7 +42,6 @@ function setInventory(terminals: Terminal[], agents: Agent[] = []): void {
       hubs: { hubs: [{ machine: "hub-a", reachable: true }] },
     },
     snapshot: undefined,
-    emptyStreak: 0,
     at: 1,
   });
 }
@@ -140,15 +139,14 @@ describe("application store", () => {
     expect(state.note).toBe("Some history is unavailable");
   });
 
-  test("observing a skipped empty reply keeps the catalogue", () => {
+  test("disconnecting keeps the last catalogue", () => {
     setInventory([terminal("t1")]);
     const inventory = getState().catalogue.inventory;
-    dispatch({ type: "catalogue/observe", emptyStreak: 2, at: 99 });
-    const state = getState();
-    expect(state.catalogue.inventory).toBe(inventory);
-    expect(state.catalogue.connected).toBe(true);
-    expect(state.catalogue.updatedAt).toBe(99);
-    expect(state.catalogue.emptyStreak).toBe(2);
+    dispatch({ type: "catalogue/disconnected" });
+    expect(getState().catalogue.connected).toBe(false);
+    dispatch({ type: "catalogue/connected" });
+    expect(getState().catalogue.connected).toBe(true);
+    expect(getState().catalogue.inventory).toBe(inventory);
   });
 
   test("a scope change clears a selection outside the machine", () => {

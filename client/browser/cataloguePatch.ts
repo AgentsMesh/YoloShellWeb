@@ -31,21 +31,23 @@ function applyRows<T>(
   rows: T[],
   patch: RowSet<T> | undefined,
   keyOf: (row: T) => string | null,
+  belongs: (row: T) => boolean,
 ): T[] | null {
   if (!patch) return rows;
   const indexed = new Map<string, T>();
-  for (const row of rows) {
+  const others = rows.filter((row) => !belongs(row));
+  for (const row of rows.filter(belongs)) {
     const key = keyOf(row);
     if (!key) return null;
     indexed.set(key, row);
   }
   for (const row of patch.upsert ?? []) {
     const key = keyOf(row);
-    if (!key) return null;
+    if (!key || !belongs(row)) return null;
     indexed.set(key, row);
   }
   for (const key of patch.remove ?? []) indexed.delete(key);
-  return [...indexed.values()];
+  return [...others, ...indexed.values()];
 }
 
 function newer(inventory: Inventory, snapshot: Snapshot | undefined): boolean {
@@ -94,8 +96,10 @@ export function applyCataloguePatch(
   if (hub.epoch !== patch.epoch || hub.revision !== patch.base_revision) {
     return { applied: false, inventory };
   }
-  const nextTerminals = applyRows(terminals, patch.terminals, terminalKey);
-  const nextAgents = applyRows(agents, patch.agents, agentKey);
+  const nextTerminals = applyRows(terminals, patch.terminals, terminalKey,
+    (row) => row.address?.machine === patch.machine);
+  const nextAgents = applyRows(agents, patch.agents, agentKey,
+    (row) => row.cursor?.target?.address?.machine === patch.machine);
   if (!nextTerminals || !nextAgents) return { applied: false, inventory };
   const nextHubs = hubs.slice();
   nextHubs[index] = {

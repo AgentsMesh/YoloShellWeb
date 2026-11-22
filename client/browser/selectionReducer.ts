@@ -1,6 +1,6 @@
 import { emptyConversation, type AppState } from "./appState.js";
 import type { Intent } from "./appIntents.js";
-import { selectedForIntent } from "./appSelectors.js";
+import { agentById, selectedForIntent } from "./appSelectors.js";
 import { buildIndex } from "./catalogueIndex.js";
 import type { SelectionId, SelectionIntent } from "./types.js";
 
@@ -79,7 +79,7 @@ export function lens(state: AppState, intent: Lens): AppState {
 export function interactionCleared(state: AppState): AppState {
   const id = state.selection.selected;
   if (id?.kind !== "agent") return state;
-  const agent = state.catalogue.index.agentsById.get(id.id);
+  const agent = agentById(id.id, state, id.machine);
   if (!agent?.interaction) return state;
   const inventory = state.catalogue.inventory;
   if (!inventory) return state;

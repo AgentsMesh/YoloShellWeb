@@ -8,6 +8,7 @@ export type LaneKind =
   | "creation"
   | "interaction"
   | "lifecycle"
+  | "attachment"
   | "archive"
   | "admin";
 
@@ -15,8 +16,7 @@ type LaneConfig = { limit: number; queue: number };
 type Lane = {
   config: LaneConfig;
   clients: (HubClient | null)[];
-  active: number;
-  waiting: number;
+  available: number[];
   waiters: ((slot: number) => void)[];
 };
 
@@ -26,6 +26,7 @@ const LIMITS: Record<LaneKind, LaneConfig> = {
   creation: { limit: 2, queue: 8 },
   interaction: { limit: 2, queue: 16 },
   lifecycle: { limit: 1, queue: 8 },
+  attachment: { limit: 2, queue: 16 },
   archive: { limit: 1, queue: 4 },
   admin: { limit: 1, queue: 8 },
 };
@@ -59,8 +60,7 @@ function lane(destination: string, kind: LaneKind): Lane {
     value = {
       config: LIMITS[kind],
       clients: Array.from({ length: LIMITS[kind].limit }, () => null),
-      active: 0,
-      waiting: 0,
+      available: Array.from({ length: LIMITS[kind].limit }, (_, slot) => slot),
       waiters: [],
     };
     lanes.set(key, value);
@@ -69,26 +69,19 @@ function lane(destination: string, kind: LaneKind): Lane {
 }
 
 function acquire(target: Lane): Promise<number> {
-  if (target.active < target.config.limit) {
-    target.active += 1;
-    return Promise.resolve(target.active - 1);
-  }
-  if (target.waiting >= target.config.queue) {
+  const slot = target.available.pop();
+  if (slot !== undefined) return Promise.resolve(slot);
+  if (target.waiters.length >= target.config.queue) {
     metrics.rejected += 1;
     return Promise.reject(new ApiError(503, "Hub is busy; retry shortly"));
   }
-  target.waiting += 1;
   return new Promise((resolve) => target.waiters.push(resolve));
 }
 
 function release(target: Lane, slot: number): void {
-  target.active -= 1;
   const waiter = target.waiters.shift();
-  if (waiter) {
-    target.waiting -= 1;
-    target.active += 1;
-    waiter(slot);
-  }
+  if (waiter) waiter(slot);
+  else target.available.push(slot);
 }
 
 async function clientAt(target: Lane, slot: number): Promise<HubClient> {
@@ -131,8 +124,7 @@ async function use<T>(
       return await operation(client);
     }
   } finally {
-    if (client) release(target, slot);
-    else release(target, slot);
+    release(target, slot);
   }
 }
 
@@ -169,4 +161,10 @@ export function archive<T>(destination: string, operation: (hub: HubClient) => P
 /** Infrequent administrative mutations. */
 export function admin<T>(destination: string, operation: (hub: HubClient) => Promise<T>): Promise<T> {
   return use(destination, "admin", operation, false);
+}
+
+
+/** Replaying an attachment chunk is idempotent on its upload ID, offset and bytes. */
+export function transfer<T>(destination: string, operation: (hub: HubClient) => Promise<T>): Promise<T> {
+  return use(destination, "attachment", operation, true);
 }

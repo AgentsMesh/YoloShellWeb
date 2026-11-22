@@ -10,6 +10,13 @@ export function agentPayload(agent: Agent): Json {
   };
 }
 
+export function interruptPayload(agent: Agent): Json {
+  return {
+    ...agentPayload(agent),
+    expected_cursor: { stream: agent.cursor?.stream, sequence: agent.cursor?.sequence },
+  };
+}
+
 export function terminalPayload(terminal: Terminal): Json {
   return {
     machine: terminal.address?.machine,

@@ -5,7 +5,8 @@ import type { TerminalTarget } from "./target";
 /** The actor's single Hub lease/input session; tabs only provide intents. */
 export class TerminalLease {
   private session: TerminalSession | null = null;
-  private opening: Promise<TerminalSession> | null = null;
+  private taking: Promise<boolean> | null = null;
+  private closed = false;
   private readonly connect: () => Promise<TerminalSession>;
 
   constructor(
@@ -27,8 +28,15 @@ export class TerminalLease {
     return this.session?.connected ?? false;
   }
 
-  async take(): Promise<boolean> {
+  take(): Promise<boolean> {
+    if (this.closed) return Promise.resolve(false);
+    this.taking ??= this.takeFromHub().finally(() => { this.taking = null; });
+    return this.taking;
+  }
+
+  private async takeFromHub(): Promise<boolean> {
     let session = await this.open();
+    if (this.closed) return false;
     // A Hub restart closes the SDK's three private sockets without changing
     // the actor or its browser sockets. Rebuild them before reporting failure.
     if (!session.connected) {
@@ -38,11 +46,16 @@ export class TerminalLease {
     try {
       return await this.attempt(session);
     } catch (error) {
+      if (this.closed) return false;
       if (error instanceof HubError) throw error;
       await this.release();
       session = await this.open();
       return this.attempt(session);
     }
+  }
+
+  discardInput(): boolean {
+    return this.session?.discardInput() ?? false;
   }
 
   enqueue(data: Uint8Array): void {
@@ -56,40 +69,35 @@ export class TerminalLease {
   async release(): Promise<void> {
     const session = this.session;
     this.session = null;
-    this.opening = null;
     await session?.close();
   }
 
   /** Drops a session whose Hub sockets failed; the next take opens a fresh one. */
-  async drop(): Promise<void> {
-    const session = this.session;
-    this.session = null;
-    this.opening = null;
-    await session?.close();
-  }
-
-  close(): Promise<void> {
+  drop(): Promise<void> {
     return this.release();
   }
 
+  async close(): Promise<void> {
+    this.closed = true;
+    // A connect or acquire already on the wire can still return a session or grant.
+    // The control request reports its own failure to the caller.
+    await this.taking?.catch(() => false);
+    await this.release();
+  }
+
   private async attempt(session: TerminalSession): Promise<boolean> {
+    if (this.closed) return false;
     if (session.state === "controlled") return true;
     const generation = await session.observe();
+    if (this.closed || this.session !== session) return false;
     if (generation === null) await session.acquire();
     else await session.take(generation);
-    return session.state === "controlled";
+    return !this.closed && this.session === session && this.state === "controlled";
   }
 
   private async open(): Promise<TerminalSession> {
-    if (this.session) return this.session;
-    if (!this.opening) {
-      this.opening = this.connect();
-    }
-    try {
-      this.session = await this.opening;
-      return this.session;
-    } finally {
-      this.opening = null;
-    }
+    if (this.closed) throw new Error("Terminal control is closed");
+    this.session ??= await this.connect();
+    return this.session;
   }
 }

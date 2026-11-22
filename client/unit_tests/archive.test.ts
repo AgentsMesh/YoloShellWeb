@@ -90,20 +90,16 @@ describe("web archive listing", () => {
     expect(result.truncated).toBe(true);
   });
 
-  test("includes ended unarchived rows from the live catalogue", async () => {
-    const { hub, machine, epoch, ops } = harness();
+  test("fetches finished and archived sessions on demand from the owning machine", async () => {
+    const { hub, epoch, ops } = harness();
     const terminalId = crypto.randomUUID();
-    ops.latest = () => ({
-      terminals: {
-        terminals: [
-          {
-            address: { machine, terminal_id: terminalId },
-            name: "ended-shell",
-            runtime: { status: "exited", target: { runtime_epoch: epoch } },
-          },
-        ],
-      },
-    });
+    const closed = archived(hub, terminalId, epoch);
+    ops.list = async () => ({ terminals: [
+      archived(hub, crypto.randomUUID(), epoch),
+      { ...closed, archived: false },
+      { ...closed, archived: false, runtime: { status: "output_blocked" } },
+      archived(crypto.randomUUID(), terminalId, epoch),
+    ] });
     const result = (await listArchive(undefined, ops)) as {
       archived: number;
       finished: number;
@@ -114,7 +110,7 @@ describe("web archive listing", () => {
     expect(result.terminals.find((row) => row.address.terminal_id === terminalId)?.finished).toBe(
       true,
     );
-    expect(hub).toBeTruthy();
+    expect(result.terminals).toHaveLength(2);
   });
 });
 

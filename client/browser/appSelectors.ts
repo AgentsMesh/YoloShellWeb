@@ -1,9 +1,8 @@
 import {
   liveTerminal,
-  selectableTerminal,
   visibleAgent,
 } from "./catalogue.js";
-import { providerKey, terminalKey, type ProviderRow } from "./catalogueIndex.js";
+import { agentKey, providerKey, terminalKey, type ProviderRow } from "./catalogueIndex.js";
 import type { AppState, ConversationState, SelectionState } from "./appState.js";
 import type {
   Agent,
@@ -74,8 +73,11 @@ export function notify(state: AppState): boolean {
 export function agentById(
   id: string | undefined,
   state: AppState,
+  machine?: string,
 ): Agent | undefined {
-  return id ? state.catalogue.index.agentsById.get(id) : undefined;
+  if (!id) return undefined;
+  return machine === undefined ? state.catalogue.index.agentsById.get(id)
+    : state.catalogue.index.agentsByAddress.get(agentKey(machine, id));
 }
 
 export function terminalById(
@@ -97,11 +99,11 @@ export function selectedForIntent(
   intent: SelectionIntent,
 ): Selected | null {
   if (intent.kind === "agent") {
-    const agent = agentById(intent.id, state);
-    return agent ? { kind: "agent", agent } : null;
+    const agent = agentById(intent.id, state, intent.machine);
+    return agent && activeAgent(agent, state) ? { kind: "agent", agent } : null;
   }
   const terminal = terminalById(intent.id, intent.machine, state);
-  if (!terminal || !selectableTerminal(terminal)) return null;
+  if (!terminal || !liveTerminal(terminal)) return null;
   return { kind: "terminal", terminal };
 }
 
@@ -119,7 +121,7 @@ export function selectionKeyOf(selected: Selected | null): string {
   if (!selected) return "";
   if (selected.kind === "agent") {
     const target = selected.agent.cursor?.target;
-    return `agent:${target?.address?.agent_id ?? ""}:${target?.execution_id ?? ""}`;
+    return `agent:${target?.address?.machine ?? ""}:${target?.address?.agent_id ?? ""}:${target?.execution_id ?? ""}`;
   }
   return `terminal:${selected.terminal.address?.machine ?? ""}:${selected.terminal.address?.terminal_id ?? ""}`;
 }

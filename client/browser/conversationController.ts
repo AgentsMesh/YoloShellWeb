@@ -9,7 +9,7 @@ import { selectionPayload } from "./payload.js";
 import { lens, selected } from "./appSelectors.js";
 import type { Json, Page, Selected } from "./types.js";
 import {
-  conversationKey,
+  chatWatchKey,
   type SessionConversationFrame,
   type WireAgentTarget,
 } from "../shared/protocol.js";
@@ -19,7 +19,7 @@ function watchBinding(target: Selected): WireAgentTarget {
 }
 
 function agentKey(target: Selected): string {
-  return conversationKey(watchBinding(target));
+  return chatWatchKey(watchBinding(target));
 }
 
 function applyPage(page: Page): void {
@@ -106,6 +106,7 @@ export async function loadOlder(): Promise<void> {
   const previousHeight = view.scrollHeight;
   try {
     const result = await api.conversation({
+      format: "chat_v1",
       ...selectionPayload(target),
       cursor,
       since_revision: null,

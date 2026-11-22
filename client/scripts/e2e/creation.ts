@@ -33,6 +33,7 @@ export async function creation(page: Cdp): Promise<string> {
     20_000,
   );
 
+  await page.waitFor(`document.getElementById('pane-title')?.textContent !== ${JSON.stringify(name)}`);
   await page.click("#archive-open");
   await page.waitFor("document.querySelectorAll('#archive-list button').length > 0");
   const before = await page.evaluate("document.getElementById('archive-note')?.textContent");

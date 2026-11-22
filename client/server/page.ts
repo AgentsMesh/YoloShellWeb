@@ -1,48 +1,27 @@
-export const page = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0d0b09">
-<title>Yolo Web</title>
-<link rel="icon" href="/icon.svg" type="image/svg+xml">
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="stylesheet" href="/app.css">
-<link rel="stylesheet" href="/vendor/xterm.css">
-</head>
-<body>
-<div id="gate" class="gate">
-<form id="gate-form" class="gate-card">
-<div class="gate-mark" aria-hidden="true">Y</div>
-<p class="eyebrow">Trusted plugin · local Hub</p>
-<h1>Yolo <span>web</span></h1>
-<p class="gate-copy">Interactive terminals and agent conversations.</p>
-<label for="token">Access token</label>
-<input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the plugin token">
-<button id="gate-submit" type="submit" disabled>Connect</button>
-<p id="gate-message" class="note" role="status" aria-live="polite">Read the token from the plugin data directory.</p>
-</form>
-</div>
-<div id="app" class="app" hidden>
+import { brand, documentPage } from "./document";
+
+export const page = documentPage("Yolo Web", "main", `<div id="app" class="app" hidden>
 <aside id="sidebar" class="sidebar" aria-label="Yolo navigation">
-<div class="side-head"><div class="brand"><span class="brand-mark" aria-hidden="true">Y</span><strong>Yolo <span>web</span></strong></div><button id="archive-open" class="icon quiet" type="button">History</button><button id="notify" class="icon quiet" type="button" aria-pressed="false">Notify</button><button id="quiet" class="icon quiet" type="button" aria-pressed="false">Quiet</button><button id="lock" class="icon" type="button">Lock</button></div>
+<div class="side-head">${brand}<a id="settings-open" class="icon" href="/settings">Settings</a></div>
 <div class="hub-card"><div class="hub-copy"><strong>Connected</strong><span id="hub-status">Connecting…</span></div><span id="hub-dot" class="state-dot state-unknown" aria-hidden="true"></span></div>
 <section id="machines" class="side-section machines" aria-labelledby="machines-heading" hidden><h2 id="machines-heading">Machines</h2><ul id="machine-list" class="rows"></ul></section>
 <label class="filter" for="filter"><span class="sr-only">Filter agents and shells</span><input id="filter" type="search" placeholder="Filter agents and shells"></label>
 <section id="needs" class="side-section needs" aria-labelledby="needs-heading" hidden><h2 id="needs-heading">Needs you <span id="needs-count" class="count">0</span></h2><ul id="needs-list" class="rows"></ul></section>
 <section class="side-section agents" aria-labelledby="agents-heading"><h2 id="agents-heading">Agents <span id="agent-count" class="count">0</span><button id="new-agent" class="section-add" type="button" aria-label="New agent" title="New agent">+</button></h2><ul id="agent-list" class="rows"></ul></section>
 <section class="side-section terminals" aria-labelledby="terminals-heading"><h2 id="terminals-heading">Shells <span id="terminal-count" class="count">0</span><button id="new-shell" class="section-add" type="button" aria-label="New shell" title="New shell">+</button></h2><ul id="terminal-list" class="rows"></ul></section>
-<p id="updated" class="updated">Not connected</p>
+<footer class="side-footer"><span id="updated">Not connected</span><button id="archive-open" class="icon" type="button">History</button></footer>
 </aside>
 <main class="pane">
-<header class="pane-head"><button id="menu" class="icon menu" type="button" aria-label="Toggle navigation" aria-expanded="false">Menu</button><div class="pane-copy"><h1 id="pane-title">No selection</h1><p id="pane-subtitle">Choose an agent or shell on the left.</p></div><div id="lens" class="lens" role="group" aria-label="Pane view" hidden><button id="lens-chat" type="button" aria-pressed="false">Chat</button><button id="lens-terminal" type="button" aria-pressed="false">Terminal</button></div></header>
-<section id="interaction" class="interaction" aria-label="Pending agent interaction" hidden><p id="interaction-prompt" class="interaction-prompt"></p><div id="interaction-choices" class="interaction-choices" role="group" aria-label="Answer the agent"></div></section>
+<header class="pane-head"><button id="menu" class="icon menu" type="button" aria-label="Toggle navigation" aria-expanded="false">Menu</button><div class="pane-copy"><h1 id="pane-title">No selection</h1><p id="pane-subtitle">Choose an agent or shell on the left.</p></div><button id="chat-cancel" type="button" class="icon" hidden>Interrupt turn</button><div id="lens" class="lens" role="group" aria-label="Pane view" hidden><button id="lens-chat" type="button" aria-pressed="false">Chat</button><button id="lens-terminal" type="button" aria-pressed="false">Terminal</button></div>
+<details id="session-options" class="session-options" hidden><summary aria-label="Session options" title="Session options">⋯</summary>
+<div><button id="terminal-add-file" type="button" disabled>Paste file…</button><button id="terminal-log" type="button">View terminal log</button><button id="terminal-end" type="button" hidden>End session…</button></div></details></header>
+<section id="interaction" class="interaction" aria-label="Pending agent interaction" hidden><p id="interaction-prompt" class="interaction-prompt"></p><form id="interaction-answer" hidden><label class="sr-only" for="interaction-text">Your answer</label><input id="interaction-text" type="text" autocomplete="off" required><button class="interaction-choice" type="submit">Answer</button></form><div id="interaction-choices" class="interaction-choices" role="group" aria-label="Answer the agent"></div></section>
 <section id="conversation" class="conversation" aria-label="Conversation" hidden><button id="older" class="older" type="button" hidden>Load older messages</button><div id="turns" class="turns"></div><p id="conversation-note" class="note" hidden></p></section>
 <p id="chat-locked" class="note chat-locked" hidden>Prompting is unavailable for this agent. Switch to Terminal to interact.</p>
-<p id="lifecycle-note" class="note lifecycle-note" hidden><span id="lifecycle-note-text"></span><button id="lifecycle-archive-ended" class="terminal-lifecycle" type="button">Archive</button></p>
-<section id="terminal-view" class="terminal-view" aria-label="Terminal" hidden><div class="terminal-meta"><span id="terminal-size"></span><span id="terminal-input-state" class="terminal-input-state">Connecting…</span><span class="terminal-actions"><button id="terminal-log" class="terminal-take" type="button">Log</button><button id="terminal-take" class="terminal-take" type="button" hidden>Take control</button><button id="terminal-end" class="terminal-lifecycle" type="button" hidden>End</button><button id="terminal-archive" class="terminal-lifecycle" type="button" hidden>Archive</button></span></div><div id="terminal-host" class="terminal-host"></div><p id="terminal-finished" class="note terminal-finished" hidden>Session finished. Archive it to remove the row; its history stays on the machine.</p><p id="terminal-error" class="note" hidden></p></section>
+<section id="terminal-view" class="terminal-view" aria-label="Terminal" hidden><div class="terminal-meta"><span id="terminal-size"></span><span id="terminal-input-state" class="terminal-input-state">Connecting…</span><button id="terminal-take" class="terminal-take" type="button" hidden>Take control</button><button id="terminal-retry" class="terminal-take" type="button" hidden>Reconnect</button></div><div id="terminal-host" class="terminal-host"></div><p id="terminal-file-note" class="note" role="status" hidden></p><p id="terminal-error" class="note" role="status" hidden></p></section>
 <section id="empty" class="empty"><div><strong>No selection</strong><p>Pick an agent or shell to begin.</p></div></section>
-<form id="composer" class="composer" hidden><label class="sr-only" for="prompt">Message</label><textarea id="prompt" rows="1" placeholder="Message…" autocomplete="off" spellcheck="false"></textarea><button id="send" type="submit">Send</button><p id="send-status" class="send-status" role="status" aria-live="polite"></p><p id="composer-hint" class="composer-hint">Enter sends · Shift+Enter adds a line · Hub acquires the writer lease</p></form>
+<form id="composer" class="composer" hidden><div id="chat-files" class="chat-files" aria-label="Attached files" hidden></div><button type="button" id="chat-add-file" class="icon" title="Attach files" aria-label="Attach files">+</button><label class="sr-only" for="prompt">Message</label><textarea id="prompt" rows="1" placeholder="Message…" autocomplete="off" spellcheck="false"></textarea><button id="send" type="submit">Send</button><p id="send-status" class="send-status" role="status" aria-live="polite"></p><p id="composer-hint" class="composer-hint">Enter sends · Shift+Enter adds a line · Hub acquires the writer lease</p></form>
+</main>
 </div>
 <div id="alerts" class="alerts" role="status" aria-live="polite"></div>
 <dialog id="create" class="create" aria-labelledby="create-title">
@@ -87,10 +66,4 @@ export const page = `<!doctype html>
 <pre id="terminal-log-text" class="terminal-log"></pre>
 <div class="create-actions"><button id="terminal-log-refresh" type="button">Refresh</button><button id="terminal-log-close" type="button">Close</button></div>
 </div>
-</dialog>
-<noscript>Yolo Web needs JavaScript.</noscript>
-<script src="/vendor/xterm.js"></script>
-<script src="/vendor/addon-fit.js"></script>
-<script type="module" src="/app/main.js"></script>
-</body>
-</html>`;
+</dialog>`);

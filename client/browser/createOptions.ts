@@ -1,6 +1,7 @@
 import { inventory, scope } from "./appSelectors.js";
 import { byId } from "./dom.js";
 import { providerSupported, syncProviderSelect } from "./providerPicker.js";
+import { defaultMachine } from "./preferences.js";
 import { getState } from "./store.js";
 
 export type Mode = "shell" | "agent";
@@ -52,13 +53,11 @@ export function machineOptions(mode: Mode): void {
       return option;
     }),
   );
-  const preferred = scope(snapshot) ?? inventory(snapshot)?.machine;
-  if (preferred && options.some((hub) => hub.machine === preferred && supported(hub, mode))) {
-    select.value = preferred;
-  } else {
-    const first = options.find((hub) => supported(hub, mode));
-    if (first) select.value = first.machine ?? "";
-  }
+  const available = options.filter((hub) => supported(hub, mode));
+  const preferred = [scope(snapshot), defaultMachine(), entry].find(
+    (machine) => machine && available.some((hub) => hub.machine === machine),
+  );
+  select.value = preferred ?? available[0]?.machine ?? "";
 }
 
 export function selectedUnsupported(mode: Mode): boolean {

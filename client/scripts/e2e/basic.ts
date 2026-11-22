@@ -48,6 +48,7 @@ export async function basic(page: Cdp, options: BasicOptions): Promise<void> {
     10_000,
   );
 
+  await page.click("#session-options summary");
   await page.click("#terminal-log");
   await page.waitFor(
     "!document.getElementById('terminal-log-note')?.textContent?.startsWith('Loading')",
@@ -67,6 +68,7 @@ export async function basic(page: Cdp, options: BasicOptions): Promise<void> {
     await selectTerminal(page, options.agentId);
     await page.click("#lens-terminal");
     await page.waitFor("document.getElementById('terminal-view')?.hidden === false");
+    await page.click("#session-options summary");
     await page.click("#terminal-log");
     await page.waitFor(
       "!document.getElementById('terminal-log-note')?.textContent?.startsWith('Loading')",

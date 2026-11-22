@@ -8,7 +8,6 @@ import { openSeed } from "./terminalSeed";
 export class TerminalStream {
   private readonly output = new TerminalOutput();
   private attachment: TerminalAttachment | null = null;
-  private generation = 0;
   private queue: Promise<void> = Promise.resolve();
   private closed = false;
 
@@ -41,25 +40,31 @@ export class TerminalStream {
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    this.generation += 1;
-    this.attachment?.close();
+    this.detachUpstream();
+    this.output.close();
+  }
+
+  private detachUpstream(): void {
+    const attachment = this.attachment;
     this.attachment = null;
+    attachment?.close();
+  }
+
+  private fail(error: unknown): void {
+    if (this.closed) return;
+    this.output.error(error instanceof Error ? error.message : "Terminal stream failed");
+    this.onClosed();
   }
 
   private ensure(): void {
     this.queue = this.queue.then(async () => {
       if (this.closed || this.output.count === 0) return;
       if (this.output.needsSeed) await this.seed();
-    }).catch((error) => {
-      this.output.error(error instanceof Error ? error.message : "Terminal stream failed");
-      this.closed = true;
-      this.onClosed();
-    });
+    }).catch((error) => this.fail(error));
   }
 
   private async seed(): Promise<void> {
-    this.attachment?.close();
-    this.attachment = null;
+    this.detachUpstream();
     const { attachment, seed } = await openSeed(this.target);
     if (this.closed) {
       attachment.close();
@@ -67,40 +72,31 @@ export class TerminalStream {
     }
     this.attachment = attachment;
     this.output.install(seed);
-    const generation = ++this.generation;
-    void this.read(attachment, generation);
+    void this.read(attachment);
   }
 
-  private async read(attachment: TerminalAttachment, generation: number): Promise<void> {
-    for (;;) {
-      if (this.closed || generation !== this.generation) return;
+  private async read(attachment: TerminalAttachment): Promise<void> {
+    while (this.attachment === attachment) {
       let event: AttachmentEvent;
       try {
         event = await attachment.nextEvent();
       } catch (error) {
-        if (!this.closed && generation === this.generation) {
-          this.output.error(error instanceof Error ? error.message : "Terminal stream failed");
-          this.closed = true;
-          this.onClosed();
-        }
+        if (this.attachment === attachment) this.fail(error);
         return;
       }
-      if (generation !== this.generation) return;
+      if (this.attachment !== attachment) return;
       if (event.event === "output") this.output.publish(event.data);
       else if (event.event === "exited") {
         this.output.ended(event.code, event.signal);
-        this.closed = true;
         this.onClosed();
         return;
       } else if (event.event === "resync") {
-        this.attachment?.close();
-        this.attachment = null;
+        this.detachUpstream();
         this.output.invalidate();
         this.ensure();
         return;
       } else if (event.event === "unreachable") {
         this.output.unreachable();
-        this.closed = true;
         this.onClosed();
         return;
       }

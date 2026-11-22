@@ -1,6 +1,7 @@
 import { ConversationActor } from "./conversationActor";
 import type { TerminalTarget } from "./target";
 import type { SessionConversationFrame } from "../shared/protocol";
+import { machineFor } from "./machineHandles";
 import { conversationKey as wireConversationKey } from "../shared/protocol";
 
 export type Binding = {
@@ -23,14 +24,16 @@ const actors = new Map<string, ConversationActor>();
 export function watchConversation(
   binding: Binding,
   subscriber: Subscriber,
+  chat = false,
 ): { key: string; stop(): void } {
-  const key = conversationKey(binding);
-  const raw = `${binding.agent.address.hub_id}:${key}`;
+  const localKey = conversationKey(binding);
+  const key = chat ? `${machineFor(binding.agent.address.hub_id)}:${localKey}` : localKey;
+  const raw = `${binding.agent.address.hub_id}:${key}:${chat}`;
   let actor = actors.get(raw);
   if (!actor) {
     actor = new ConversationActor(key, binding, () => {
       if (actors.get(raw) === actor) actors.delete(raw);
-    });
+    }, chat);
     actors.set(raw, actor);
   }
   actor.add(subscriber);

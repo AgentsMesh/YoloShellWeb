@@ -6,11 +6,12 @@ function harness(controlled: boolean) {
   const control = {
     controlled,
     input: (data: Uint8Array) => input.push(new TextDecoder().decode(data)),
+    writeNow: (data: Uint8Array) => input.push(new TextDecoder().decode(data)),
   };
   let data: ((value: string) => void) | null = null;
   const term = {
     onData: (callback: (value: string) => void) => (data = callback),
-    onBinary: () => {},
+    onKey: () => {}, onBinary: () => {},
   };
   new TerminalInputBinding(control as never).attach(term as never);
   return { control, input, type: (value: string) => data?.(value) };

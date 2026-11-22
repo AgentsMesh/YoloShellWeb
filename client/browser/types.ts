@@ -1,3 +1,4 @@
+import type { SessionUpdate } from "../../sdk/src/chatTypes.js";
 import type { ProviderFeatures } from "../shared/protocol.js";
 
 export type Json = Record<string, any>;
@@ -19,6 +20,7 @@ export type Terminal = {
 export type Agent = {
   cursor?: {
     target?: { address?: { machine?: string; agent_id?: string }; execution_id?: string };
+    stream?: string;
     sequence?: number;
   };
   terminal?: { address?: { machine?: string; terminal_id?: string }; runtime_epoch?: string };
@@ -32,6 +34,7 @@ export type Agent = {
   schema_version?: number;
   capabilities?: {
     submit_prompt?: { support?: string };
+    interrupt?: { support?: string };
     respond_interaction?: { support?: string };
   };
   interaction?: {
@@ -60,6 +63,7 @@ export type Inventory = {
         create?: boolean;
         agent_start?: boolean;
         terminal_lifecycle?: boolean;
+        stage_attachment?: boolean;
       };
       providers?: {
         provider_id?: string;
@@ -90,7 +94,7 @@ export type Part = {
   native_kind?: string;
   media_type?: string | null;
 };
-export type Entry = { id?: number[]; role?: string; timestamp?: string | null; parts?: Part[] };
+export type Entry = { id?: number[]; role?: string; timestamp?: string | null; parts?: Part[]; updates?: SessionUpdate[] };
 export type Page = {
   entries?: Entry[];
   next_cursor?: unknown;

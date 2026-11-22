@@ -9,12 +9,10 @@ import type {
 } from "./types.js";
 
 export type Intent =
-  | { type: "catalogue/observe"; emptyStreak: number; at: number }
   | {
       type: "catalogue/replace";
       inventory: Inventory;
       snapshot: Snapshot | undefined;
-      emptyStreak: number;
       at: number;
     }
   | { type: "catalogue/patch"; inventory: Inventory; at: number }
@@ -25,6 +23,7 @@ export type Intent =
   | { type: "ui/filter"; filter: string }
   | { type: "selection/choose"; intent: SelectionIntent }
   | { type: "selection/created"; intent: SelectionIntent }
+  | { type: "selection/expire"; machine: string; id: string }
   | { type: "selection/adopt"; intent: SelectionIntent }
   | { type: "selection/lens"; lens: Lens }
   | { type: "selection/interactionCleared" }

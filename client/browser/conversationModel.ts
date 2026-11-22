@@ -1,4 +1,5 @@
-import type { Entry, Part } from "./types.js";
+import { legacyUpdates } from "../../sdk/src/chatLegacy.js";
+import type { Entry } from "./types.js";
 
 export function entryKey(entry: Entry): string {
   return JSON.stringify(entry.id ?? [entry.role, entry.timestamp, entry.parts?.[0]?.text]);
@@ -19,8 +20,15 @@ export function entryLabel(entry: Entry): string {
   }
 }
 
-export function partText(part: Part): string {
-  return part.text ?? part.summary ?? part.output ?? part.arguments ?? part.native_kind ?? "";
+export function entryUpdates(entry: Entry) {
+  return entry.updates ?? legacyUpdates(entry);
+}
+
+export function promptText(entry: Entry): string {
+  return entryUpdates(entry).flatMap((update) =>
+    update.sessionUpdate === "user_message_chunk" && update.content.type === "text"
+      ? [update.content.text] : [],
+  ).join(" ");
 }
 
 export function timeLabel(value: string | number | null | undefined): string {

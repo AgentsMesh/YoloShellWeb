@@ -15,22 +15,17 @@ export function archiveOps(
   readAt: Read = read,
   archiveAt: Archive = archive,
   machines: () => Machine[] = () => getCatalogue().machines(),
-  latest: () => unknown = () => getCatalogue().latest(),
 ): ArchiveOps {
   return {
     machines,
-    latest,
     list: (hub) =>
       readAt(hub, async (client) => {
         const hello = (await client.request("hello", {}, hub)) as {
           hello?: { methods?: unknown };
         };
         const methods = Array.isArray(hello.hello?.methods) ? hello.hello.methods : [];
-        if (!methods.includes("read_terminal_history")) {
-          return { terminals: [], supports: false };
-        }
-        const reply = (await client.listArchived(hub)) as { terminals?: unknown[] };
-        return { terminals: reply.terminals, supports: true };
+        const reply = (await client.list(hub, true)) as { terminals?: unknown[] };
+        return { terminals: reply.terminals, supports: methods.includes("read_terminal_history") };
       }),
     history: (hub, request) =>
       archiveAt(hub, (client) => client.readTerminalHistory(request, hub)),

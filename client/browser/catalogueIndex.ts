@@ -11,6 +11,7 @@ export type CatalogueIndex = {
   machinesByHandle: Map<string, MachineRow>;
   agents: Agent[];
   agentsById: Map<string, Agent>;
+  agentsByAddress: Map<string, Agent>;
   agentsByTerminal: Map<string, Agent[]>;
   terminals: Terminal[];
   terminalsById: Map<string, Terminal[]>;
@@ -19,6 +20,10 @@ export type CatalogueIndex = {
 };
 
 const SEP = "\u0000";
+
+export function agentKey(machine?: string, id?: string): string {
+  return `${machine ?? ""}${SEP}${id ?? ""}`;
+}
 
 export function terminalKey(
   address: { machine?: string; terminal_id?: string } | undefined,
@@ -37,6 +42,7 @@ export function emptyIndex(): CatalogueIndex {
     machinesByHandle: new Map(),
     agents: [],
     agentsById: new Map(),
+    agentsByAddress: new Map(),
     agentsByTerminal: new Map(),
     terminals: [],
     terminalsById: new Map(),
@@ -68,7 +74,11 @@ export function buildIndex(inventory: Inventory | null): CatalogueIndex {
   index.agents = inventory.agents?.agents ?? [];
   for (const agent of index.agents) {
     const id = agent.cursor?.target?.address?.agent_id;
-    if (id && !index.agentsById.has(id)) index.agentsById.set(id, agent);
+    if (id) {
+      if (!index.agentsById.has(id)) index.agentsById.set(id, agent);
+      const address = agentKey(agent.cursor?.target?.address?.machine, id);
+      if (!index.agentsByAddress.has(address)) index.agentsByAddress.set(address, agent);
+    }
     const terminal = terminalKey(agent.terminal?.address);
     if (agent.terminal?.address?.terminal_id) push(index.agentsByTerminal, terminal, agent);
   }

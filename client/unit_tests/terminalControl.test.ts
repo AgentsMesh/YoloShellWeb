@@ -16,6 +16,7 @@ function harness(autoTake = false) {
       sendTake: () => calls.take++,
       sendRelease: () => calls.release++,
       sendInput: (data) => calls.input.push(Array.from(data)),
+      setInputNotice: () => {},
       setStdin: (enabled) => calls.stdin.push(enabled),
       setStatus: (text) => calls.status.push(text),
       showTake: () => {},

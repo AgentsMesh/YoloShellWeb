@@ -6,7 +6,7 @@
  *   YOLO_WEB_E2E_TERMINAL=<disposable-shell-id> \
  *   [YOLO_WEB_E2E_AGENT=<alternate-screen-agent-id>] \
  *   [YOLO_WEB_E2E_TOKEN=<plugin-token>] \
- *   [YOLO_WEB_E2E_SCENARIO=basic|creation|takeover|stall|all] \
+ *   [YOLO_WEB_E2E_SCENARIO=basic|settings|creation|takeover|stall|all] \
  *   [YOLO_WEB_E2E_BROWSER_CDP=ws://127.0.0.1:9222/devtools/browser/<id>] \
  *   [YOLO_WEB_E2E_PAUSE='kill -STOP <pid>'] \
  *   [YOLO_WEB_E2E_RESUME='kill -CONT <pid>'] \
@@ -16,6 +16,7 @@
 import { Cdp, assert, reload, unlock } from "./e2e/cdp";
 import { basic } from "./e2e/basic";
 import { creation } from "./e2e/creation";
+import { settings } from "./e2e/settings";
 import { stall } from "./e2e/stall";
 import { takeover } from "./e2e/takeover";
 
@@ -32,6 +33,7 @@ try {
   await reload(page);
   await unlock(page, token);
   await page.waitFor("document.getElementById('hub-status')?.textContent?.trim().length > 0", 15_000);
+  if (scenario === "settings" || scenario === "all") await settings(page);
   if (scenario === "basic" || scenario === "all") {
     await basic(page, {
       terminalId,

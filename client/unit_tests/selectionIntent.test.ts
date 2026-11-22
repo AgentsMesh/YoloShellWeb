@@ -17,7 +17,6 @@ function setInventory(terminals: Terminal[]): void {
       hubs: { hubs: [{ machine: "hub-a", reachable: true }] },
     },
     snapshot: undefined,
-    emptyStreak: 0,
     at: 0,
   });
 }
@@ -75,5 +74,16 @@ describe("selection intent", () => {
     dispatch({ type: "selection/created", intent: intent("t1") });
     expect(getState().selection.selected).toBeNull();
     expect(getState().selection.pending?.id).toBe("t1");
+  });
+
+  test("a saved exit stays in history and a late creation timeout cannot clear another target", () => {
+    setInventory([terminal("t1", "exited")]);
+    dispatch({ type: "selection/choose", intent: intent("t1") });
+    expect(getState().selection.selected).toBeNull();
+    dispatch({ type: "selection/created", intent: intent("later") });
+    dispatch({ type: "selection/expire", machine: "hub-b", id: "later" });
+    expect(getState().selection.pending?.id).toBe("later");
+    dispatch({ type: "selection/expire", machine: "hub-a", id: "later" });
+    expect(getState().selection.pending).toBeNull();
   });
 });

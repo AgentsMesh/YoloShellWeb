@@ -70,3 +70,22 @@ export function notifyNeeds(count: number): void {
     // Notification construction can fail in restricted environments.
   }
 }
+
+const MACHINE_KEY = "yolo-default-machine";
+
+export function defaultMachine(): string | null {
+  try {
+    return localStorage.getItem(MACHINE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveDefaultMachine(machine: string): void {
+  try {
+    if (machine) localStorage.setItem(MACHINE_KEY, machine);
+    else localStorage.removeItem(MACHINE_KEY);
+  } catch {
+    // Persistent preferences may be unavailable in private browsing.
+  }
+}

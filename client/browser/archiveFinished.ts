@@ -55,9 +55,11 @@ export async function archivePending(refresh: () => Promise<void>): Promise<void
       runtime_epoch: epoch,
       action: "archive",
     });
+    if (pending !== item) return;
     archiveHistoryNote("Archived");
     await refresh();
   } catch (error) {
+    if (pending !== item) return;
     button().disabled = false;
     archiveHistoryNote(error instanceof Error ? error.message : "Archive failed");
   }

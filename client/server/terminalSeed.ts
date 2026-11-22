@@ -44,36 +44,33 @@ function combine(initial: ReturnType<TerminalAttachment["takeInitial"]>): Seed |
   };
 }
 
-async function open(target: TerminalTarget, seed?: "history" | "snapshot") {
-  return TerminalAttachment.open(hubEndpoint(), {
+async function open(target: TerminalTarget, requested?: "history" | "snapshot") {
+  const attachment = await TerminalAttachment.open(hubEndpoint(), {
     target,
     cursor: null,
-    ...(seed ? { seed } : {}),
+    ...(requested ? { seed: requested } : {}),
   });
+  let seed: Seed | null = null;
+  try {
+    seed = combine(attachment.takeInitial());
+    return seed ? { attachment, seed } : null;
+  } finally {
+    if (!seed) attachment.close();
+  }
 }
 
 export async function openSeed(target: TerminalTarget): Promise<{
   attachment: TerminalAttachment;
   seed: Seed;
 }> {
-  try {
-    const attachment = await open(target, "history");
-    const seed = combine(attachment.takeInitial());
-    if (!seed) throw new Error("Terminal attachment seed is missing");
-    return { attachment, seed };
-  } catch (history) {
-    if (!historyUnavailable(history)) throw history;
+  for (const requested of ["history", "snapshot", undefined] as const) {
     try {
-      const attachment = await open(target, "snapshot");
-      const seed = combine(attachment.takeInitial());
-      if (seed) return { attachment, seed };
-      attachment.close();
-    } catch (snapshot) {
-      if (!historyUnavailable(snapshot)) throw snapshot;
+      const result = await open(target, requested);
+      if (result) return result;
+      if (requested !== "snapshot") break;
+    } catch (error) {
+      if (!requested || !historyUnavailable(error)) throw error;
     }
-    const attachment = await open(target);
-    const seed = combine(attachment.takeInitial());
-    if (!seed) throw new Error("Terminal attachment seed is missing");
-    return { attachment, seed };
   }
+  throw new Error("Terminal attachment seed is missing");
 }

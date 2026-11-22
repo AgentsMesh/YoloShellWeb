@@ -1,4 +1,4 @@
-import { application, coherent } from "./catalogue.js";
+import { coherent, newer } from "./catalogue.js";
 import { applyCataloguePatch, type CataloguePatch } from "./cataloguePatch.js";
 import { syncWatch } from "./conversationController.js";
 import { renderPane, renderSidebar } from "./render.js";
@@ -42,6 +42,7 @@ function afterCatalogue(first: boolean, beforeKey: string): void {
   renderPane(resolved?.take === true);
   const state = getState();
   if (!state.selection.selected) {
+    if (beforeKey) syncWatch();
     if (state.selection.pending) return;
     if (!(first && restoreSelection())) autoSelect();
     return;
@@ -58,25 +59,8 @@ export function applyInventory(next: unknown): void {
   const state = getState();
   const first = state.catalogue.inventory === null;
   const beforeKey = accepted();
-  const decision = application(
-    state.catalogue.inventory,
-    state.catalogue.snapshot,
-    next,
-    state.catalogue.emptyStreak,
-  );
-  const at = Date.now();
-  if (decision.apply) {
-    dispatch({
-      type: "catalogue/replace",
-      inventory: next,
-      snapshot: next.snapshot,
-      emptyStreak: decision.emptyStreak,
-      at,
-    });
-  } else {
-    dispatch({ type: "catalogue/observe", emptyStreak: decision.emptyStreak, at });
-    return;
-  }
+  if (!newer(state.catalogue.snapshot, next.snapshot)) return;
+  dispatch({ type: "catalogue/replace", inventory: next, snapshot: next.snapshot, at: Date.now() });
   afterCatalogue(first, beforeKey);
 }
 

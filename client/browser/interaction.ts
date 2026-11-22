@@ -13,6 +13,11 @@ export function renderInteraction(selected: Selected | null): void {
     return;
   }
   card.hidden = false;
+  const form = byId<HTMLFormElement>("interaction-answer");
+  form.hidden = pending.kind !== "text";
+  if (form.dataset.id !== pending.reference.id) form.reset();
+  form.dataset.id = pending.reference.id;
+  byId<HTMLInputElement>("interaction-text").disabled = getState().request.busy;
   byId("interaction-prompt").textContent =
     pending.prompt?.trim() || "The agent is waiting for your answer.";
   const choices = byId("interaction-choices");

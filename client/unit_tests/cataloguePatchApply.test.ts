@@ -112,4 +112,13 @@ describe("browser catalogue patch application", () => {
     });
     expect(applyCataloguePatch(inventory(), bad).applied).toBe(false);
   });
+
+  test("a peer retains a same-ID shell when the entry machine removes its copy", () => {
+    const current = inventory();
+    const peer = { address: { machine: "peer", terminal_id: "t2" }, runtime: { status: "running" } };
+    current.terminals!.terminals!.push(peer);
+    const next = applyCataloguePatch(current, patch());
+    expect(next.inventory?.terminals?.terminals).toContain(peer);
+    expect(next.inventory?.terminals?.terminals).not.toContain(current.terminals!.terminals![1]);
+  });
 });

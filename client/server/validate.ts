@@ -56,7 +56,7 @@ export function cursor(value: unknown, hub: string) {
   if (value === null || value === undefined) return null;
   const item = record(value);
   const address = record(item.address);
-  if (!Number.isInteger(item.before_offset) || (item.before_offset as number) < 0) {
+  if (typeof item.before_offset !== "number" || !Number.isInteger(item.before_offset) || item.before_offset < 0) {
     throw new ApiError(400, "Invalid cursor");
   }
   return {
