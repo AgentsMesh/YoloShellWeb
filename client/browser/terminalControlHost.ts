@@ -2,6 +2,7 @@ export type TerminalControlHost = {
   sendTake(): void;
   sendRelease(): void;
   sendInput(data: Uint8Array): void;
+  setInputNotice(text: string): void;
   setStdin(enabled: boolean): void;
   setStatus(text: string, active?: boolean): void;
   showTake(visible: boolean): void;

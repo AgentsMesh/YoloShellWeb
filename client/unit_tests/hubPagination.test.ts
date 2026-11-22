@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { collectPages } from "../../sdk/src/pages";
+import { collectPages, observePages } from "../../sdk/src/pages";
 
 describe("paged catalogue reads", () => {
   test("walks next cursors unchanged and keeps every page", async () => {
@@ -47,5 +47,24 @@ describe("paged catalogue reads", () => {
       return { terminals: [], next: calls };
     });
     expect(calls).toBe(64);
+  });
+
+  test("only valid pages ending with a null cursor make a complete observation", async () => {
+    expect(await observePages("agents", async () => ({ agents: [], next: null })))
+      .toEqual({ rows: [], complete: true });
+    expect(await observePages("agents", async () => ({ agents: [1] })))
+      .toEqual({ rows: [1], complete: false });
+    expect(await observePages("agents", async (after) =>
+      after === null ? { next: 1 } : { agents: [2], next: null }))
+      .toEqual({ rows: [2], complete: false });
+    expect(await observePages("agents", async () => ({ agents: [], next: 1 })))
+      .toEqual({ rows: [], complete: false });
+    const cycle = [1, 2, 1, null];
+    expect(await observePages("agents", async () => ({ agents: [], next: cycle.shift() })))
+      .toEqual({ rows: [], complete: false });
+    let calls = 0;
+    const capped = await observePages("agents", async () => ({ agents: [++calls], next: calls }));
+    expect(capped.complete).toBe(false);
+    expect(capped.rows).toHaveLength(64);
   });
 });

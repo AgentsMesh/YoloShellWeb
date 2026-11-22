@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from "bun";
 import type { Seed } from "./terminalSeed";
-import type { TerminalOutputFrame } from "../shared/protocol";
+import { TERMINAL_DETACHED, type TerminalOutputFrame } from "../shared/protocol";
 
 const CHUNK = 64 * 1024;
 const HIGH_WATER = 4 * 1024 * 1024;
@@ -72,6 +72,12 @@ export class TerminalOutput {
 
   unsubscribe(ws: ServerWebSocket<unknown>): void {
     for (const sink of this.sinks) if (sink.ws === ws) this.sinks.delete(sink);
+  }
+
+  close(): void {
+    for (const sink of this.sinks) sink.ws.close(1000, TERMINAL_DETACHED);
+    this.sinks.clear();
+    this.invalidate();
   }
 
   invalidate(): void {

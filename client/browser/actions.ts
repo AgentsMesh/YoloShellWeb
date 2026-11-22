@@ -3,7 +3,7 @@ import { answerResult } from "./answer.js";
 import { clientId } from "./clientIdentity.js";
 import { loadOlder } from "./conversationController.js";
 import { byId } from "./dom.js";
-import { selectionPayload } from "./payload.js";
+import { interruptPayload, selectionPayload } from "./payload.js";
 import { submitPrompt } from "./promptSend.js";
 import { renderPane, renderStatus } from "./render.js";
 import { fail, setBusy, setStatus } from "./requestController.js";
@@ -12,25 +12,24 @@ import { dispatch, getState } from "./store.js";
 
 export { closeDrawer } from "./drawer.js";
 
-async function respond(interactionId: string, choice: string): Promise<void> {
+async function act(action: { cancel: true } | { interaction_id: string; choice?: string; answer?: string }): Promise<void> {
   const state = getState();
   const target = selected(state);
   if (!target || target.kind !== "agent" || state.request.busy) return;
   setBusy(true);
-  setStatus("Answering…");
+  const cancel = "cancel" in action;
+  setStatus(cancel ? "Interrupting…" : "Answering…");
   renderPane();
   try {
-    const result = (await api.respond({
-      ...selectionPayload(target),
-      interaction_id: interactionId,
-      choice,
-      client_id: clientId(),
-    })) as { receipt?: { outcome?: unknown } };
+    const result = cancel
+      ? await api.cancel({ ...interruptPayload(target.agent), client_id: clientId() })
+      : await api.respond({ ...selectionPayload(target), ...action, client_id: clientId() });
+    if (getState().selection.epoch !== state.selection.epoch) return;
     const answer = answerResult(result.receipt?.outcome);
-    if (answer.clear) dispatch({ type: "selection/interactionCleared" });
-    setStatus(answer.text, answer.ok ? "ok" : "bad");
+    if (!cancel && answer.clear) dispatch({ type: "selection/interactionCleared" });
+    setStatus(cancel ? (answer.ok ? "Interrupt sent" : "Interrupt unconfirmed") : answer.text, answer.ok ? "ok" : "bad");
   } catch (error) {
-    fail(error);
+    if (getState().selection.epoch === state.selection.epoch) fail(error);
   } finally {
     setBusy(false);
     renderPane();
@@ -43,6 +42,12 @@ export function bindActions(): void {
     event.preventDefault();
     void submitPrompt();
   });
+  byId("chat-cancel").onclick = () => void act({ cancel: true });
+  const form = byId<HTMLFormElement>("interaction-answer");
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    if (form.dataset.id) void act({ interaction_id: form.dataset.id, answer: byId<HTMLInputElement>("interaction-text").value });
+  };
   const field = byId<HTMLTextAreaElement>("prompt");
   field.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -56,6 +61,6 @@ export function bindActions(): void {
       "button[data-choice]",
     );
     if (!button) return;
-    void respond(button.dataset.interaction ?? "", button.dataset.choice ?? "");
+    void act({ interaction_id: button.dataset.interaction ?? "", choice: button.dataset.choice ?? "" });
   });
 }

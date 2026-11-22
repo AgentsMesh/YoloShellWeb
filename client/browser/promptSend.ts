@@ -2,6 +2,7 @@ import { api } from "./api.js";
 import { outcomeLabel } from "./answer.js";
 import { clientId } from "./clientIdentity.js";
 import { entryKey } from "./conversationModel.js";
+import { clearSent, hasFiles, preparePrompt } from "./composerDraft.js";
 import { byId } from "./dom.js";
 import { selectionPayload } from "./payload.js";
 import { promptVisible } from "./promptReceipt.js";
@@ -48,11 +49,6 @@ function confirmed(
   });
 }
 
-function clear(field: HTMLTextAreaElement): void {
-  field.value = "";
-  field.style.height = "";
-}
-
 export async function submitPrompt(): Promise<void> {
   const state = getState();
   const target = selected(state);
@@ -66,7 +62,8 @@ export async function submitPrompt(): Promise<void> {
   ) {
     return;
   }
-  if (!text.trim()) return;
+  const attachments = hasFiles();
+  if (!text.trim() && !attachments) return;
   const baseline = new Set<string>(
     state.conversation.entries.map((entry: Entry) => entryKey(entry)),
   );
@@ -75,16 +72,22 @@ export async function submitPrompt(): Promise<void> {
   setStatus("Sending…");
   renderPane();
   try {
-    const result = (await api.prompt({ ...selectionPayload(target), text, client_id: clientId() })) as {
+    const body = await preparePrompt(text, (name) => { setStatus(`Transferring ${name}…`); renderStatus(); });
+    if (getState().selection.epoch !== generation) return;
+    const result = (await api.prompt({ ...selectionPayload(target), ...body, client_id: clientId() })) as {
       prompt?: { outcome?: unknown };
     };
     const outcome = result.prompt?.outcome;
+    if (getState().selection.epoch !== generation) {
+      if (["delivered", "turn_ended"].includes(String(outcome))) clearSent(target);
+      return;
+    }
     if (outcome === "unknown") {
       setStatus("Prompt outcome unconfirmed; checking the conversation…");
       renderStatus();
-      if (await confirmed(text, baseline, generation)) {
+      if (!attachments && await confirmed(text, baseline, generation)) {
         setStatus("Prompt delivered", "ok");
-        clear(field);
+        clearSent(target);
       } else {
         setStatus(
           "Delivery unconfirmed; check the conversation before resending",
@@ -95,10 +98,10 @@ export async function submitPrompt(): Promise<void> {
       setStatus(outcomeLabel(outcome), "bad");
     } else {
       setStatus(outcomeLabel(outcome), "ok");
-      clear(field);
+      clearSent(target);
     }
   } catch (error) {
-    fail(error);
+    if (getState().selection.epoch === generation) fail(error);
   } finally {
     setBusy(false);
     renderPane();

@@ -33,7 +33,7 @@ export class SessionConnection {
 
   message(message: string | Uint8Array): void {
     if (this.closed || typeof message !== "string") return;
-    let value: { type?: unknown };
+    let value: { type?: unknown; format?: string };
     try {
       value = JSON.parse(message) as { type?: unknown };
     } catch {
@@ -59,7 +59,7 @@ export class SessionConnection {
         const binding = agentTarget((value as { binding?: unknown }).binding);
         this.conversation = watchConversation(binding, {
           send: (frame) => this.send(sanitize(frame)),
-        });
+        }, value.format === "chat_v1");
       } catch (error) {
         this.send({
           type: "conversation.error",

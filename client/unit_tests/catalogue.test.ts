@@ -1,13 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
-  application,
+  newer,
   coherent,
-  finishedTerminal,
   liveAgent,
   liveTerminal,
-  selectableTerminal,
   visibleAgent,
 } from "../browser/catalogue";
+import { finishedTerminal } from "../shared/terminalLifecycle";
 import { catalogue } from "../server/inventory";
 
 const EMPTY = {
@@ -20,7 +19,6 @@ const ONE = {
   agents: { agents: [{ cursor: { target: { address: { agent_id: "a" } } }, lifecycle: { state: "running" } }] },
   hubs: { hubs: [] },
 };
-const SNAPSHOT = { server: "s", sequence: 1 };
 
 describe("catalogue visibility", () => {
   test("live terminals include starting, blocked output and finalizing", () => {
@@ -32,15 +30,14 @@ describe("catalogue visibility", () => {
     }
   });
 
-  test("finished sessions remain selectable but are not live", () => {
+  test("finished sessions belong to history", () => {
     for (const status of ["exited", "lost"]) {
       const terminal = { runtime: { status } };
       expect(finishedTerminal(terminal), status).toBe(true);
       expect(liveTerminal(terminal), status).toBe(false);
-      expect(selectableTerminal(terminal), status).toBe(true);
     }
     expect(finishedTerminal({ runtime: { status: "running" } })).toBe(false);
-    expect(selectableTerminal({ runtime: { status: "unreachable" } })).toBe(false);
+    expect(liveTerminal({ archived: true, runtime: { status: "running" } })).toBe(false);
   });
 
   test("live agents include a starting turn", () => {
@@ -80,25 +77,12 @@ describe("catalogue visibility", () => {
 describe("catalogue application", () => {
   test("an out-of-order snapshot never rolls the catalogue backwards", () => {
     const applied = { server: "s", sequence: 4 };
-    expect(application(ONE, applied, { ...ONE, snapshot: { server: "s", sequence: 5 } }, 0).apply).toBe(true);
-    expect(application(ONE, applied, { ...ONE, snapshot: { server: "s", sequence: 4 } }, 0).apply).toBe(false);
-    expect(application(ONE, applied, { ...ONE, snapshot: { server: "s", sequence: 3 } }, 0).apply).toBe(false);
-    expect(application(ONE, applied, { ...ONE, snapshot: { server: "other", sequence: 1 } }, 0).apply).toBe(true);
-    expect(application(ONE, applied, { ...ONE, snapshot: undefined }, 0).apply).toBe(true);
-  });
-
-  test("one empty reply after a populated catalogue is not rendered", () => {
-    const first = application(ONE, SNAPSHOT, { ...EMPTY, snapshot: { server: "s", sequence: 2 } }, 0);
-    expect(first).toEqual({ apply: false, emptyStreak: 1 });
-    const second = application(ONE, SNAPSHOT, { ...EMPTY, snapshot: { server: "s", sequence: 3 } }, first.emptyStreak);
-    expect(second.apply).toBe(true);
-  });
-
-  test("a non-empty reply resets the confirmation streak", () => {
-    expect(application(ONE, SNAPSHOT, { ...ONE, snapshot: { server: "s", sequence: 2 } }, 1)).toEqual({
-      apply: true,
-      emptyStreak: 0,
-    });
+    expect(newer(applied, { server: "s", sequence: 5 })).toBe(true);
+    expect(newer(applied, { server: "s", sequence: 4 })).toBe(false);
+    expect(newer(applied, { server: "s", sequence: 3 })).toBe(false);
+    expect(newer(applied, { server: "other", sequence: 1 })).toBe(true);
+    expect(newer(applied, undefined)).toBe(true);
+    expect(coherent(EMPTY)).toBe(true);
   });
 });
 

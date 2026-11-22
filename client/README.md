@@ -4,7 +4,7 @@ This is the first trusted plugin canary. It is a user-level Bun process; it has
 no sandbox, owns its daemon and serves its own HTTP UI. The canary currently binds
 `0.0.0.0` so a trusted LAN can reach it; this is a temporary mode.
 
-For a released version, run `yolo plugin install web.client --trust`. The
+For a released version, run `yolo plugin install web.client`. The
 commands below link a local checkout for development.
 
 ```sh
@@ -44,10 +44,10 @@ erasing a row; exited or lost sessions are not shown. Selecting an agent opens
 Chat when its native transcript is readable and otherwise falls back to its
 live Terminal; selecting a shell opens Terminal. Chat renders agent text as
 safe Markdown (headings, lists, code, tables, emphasis and http(s) links) without
-interpreting source HTML. Chat prompts use Hub `agent_prompt` and are enabled by
-the observed `submit_prompt` capability and freshness; incapable or stale agents
-show a note to use the Terminal instead. An unconfirmed receipt retains the
-draft and points at the transcript rather than inviting a blind resend.
+interpreting source HTML. The current `submit_prompt` capability enables Chat input.
+An unconfirmed submission keeps the draft for comparison with the transcript.
+Interrupt sends the displayed observation’s stream ID and sequence. A changed
+observation returns HTTP 409 so the user can review the current turn.
 
 **+** beside Agents and Shells opens a creation dialog. Shell creation uses the
 public Hub `create`/`finalize` flow; agent creation uses the Hub's closed
@@ -95,12 +95,11 @@ returning that fallback is retried with the snapshot seed, and a Hub predating
 the seed field is retried with the legacy seedless attach.
 
 Control is projected from the actor: one local controller, every other tab
-observing. Selecting a row is read-only; the first keystroke while no other tab
-controls takes control and buffers the triggering bytes. If another tab
-controls, typing remains observation and the tab offers **Take control**; an
-explicit takeover demotes the previous tab. Hidden tabs retain control until
-release, disconnect or takeover, so switching tabs does not steal or drop a
-lease. Closing the last controller releases the actor's Hub lease; an external
+observing. Selecting a row is read-only. Typing or pasting takes control when the terminal
+is free and preserves the whole gesture, including text pastes over 64 KiB. When another
+tab controls, typing leaves it in control. **Take control** demotes the previous tab.
+Hidden tabs retain control until release, disconnect or takeover. Closing the last
+controller releases the actor's Hub lease. An external
 TUI or broker remains the Hub authority and demotes all tabs if it takes over.
 On binding, a pending agent's terminal selection becomes the Agent selection
 while keeping the Terminal lens. Both sockets carry a 15 s heartbeat; a silent
@@ -120,21 +119,28 @@ the catalogue or another class. Machine handles are HMAC-derived from a
 plugin-private key and stay stable across plugin restarts; a stale machine keeps
 its last rows with a `stale`/`unreachable` status and cannot be used for
 creation until it recovers.
-A selected live terminal exposes **End** and a finished one exposes **Archive**
-when the machine advertises the public `terminal` command. Both send the exact
-terminal id and observed runtime epoch. A successful End leaves a notice with
-an Archive action. Ended sessions are not listed as sidebar work: they appear in
-**History** together with archived sessions. A finished row offers Archive; an
-archived row opens its read-only retained history. **Log** opens a scrollable
-plain-text transcript from the live actor's seed/ring, including when the
-provider is in an alternate-screen TUI. History is capped at 500
-rows and only includes machines that advertise `read_terminal_history`; an older
-peer is shown as unavailable instead of offering a broken action. The history
-view replays the Host-retained raw stream into a read-only xterm; it never
-attaches to a runtime or takes a writer lease. Compaction or the byte budget
-marks the stream `truncated`. See
-[ADR 0032](https://github.com/AgentsMesh/YoloShell/blob/main/docs/adr/0032-archived-terminal-history.md). Older Hubs hide
-the lifecycle controls. See
+The sidebar links to **Settings** (`/settings`) for agent alerts, quiet mode and
+locking the tab. Hub and machines shows reachability and available providers.
+The default machine applies to new shells and agents opened from All machines.
+Selecting a machine in the sidebar takes precedence.
+
+The terminal header's **Session options** menu contains **View terminal log**
+and, on capable machines, **End session…** with confirmation. A normal shell
+also accepts `exit`. The Web client releases its terminal view, output buffers
+and connections when the Hub confirms exit. A temporary output failure shows
+a reconnect action. Selecting text in a live terminal or its archived output copies
+it on release. Paste images or files into the terminal (or use **Session options → Paste file…**)
+to insert references on the terminal’s machine. Later keystrokes, pastes and Enter wait for the file
+references. A failed transfer, a change of controller or a disconnect clears queued input and shows
+a retry notice. In Chat, paste or use **Attach files** to add attachments to a draft.
+**Send** transfers the bytes and submits the prompt.
+The [SDK](../sdk/README.md) exposes the same Hub APIs to other plugins.
+
+**History** in the sidebar footer fetches finished and
+archived sessions from their owning machines on demand. A finished session can
+be archived there. Archived history replays the retained output in a read-only
+terminal. The list displays up to 500 rows.
+See [archived terminal history](https://github.com/AgentsMesh/YoloShell/blob/main/docs/adr/0032-archived-terminal-history.md) and
 [ADR 0030](https://github.com/AgentsMesh/YoloShell/blob/main/docs/adr/0030-web-terminal-lifecycle.md).
 
 Notifications require a secure context; the button explains the HTTPS or
@@ -144,7 +150,7 @@ token. It receives only opaque machine handles for scoping and routing. The
 user reads the token from the plugin data file and pastes it into the page.
 Fixed routes are `/`, `/app.css`, `/app/*.js`, `/vendor/xterm.js`,
 `/vendor/xterm.css`, `/vendor/addon-fit.js`, `/health`, `/api/inventory`
-(authenticated diagnostics), `/api/respond`, `/api/conversation` (older-page
+(authenticated diagnostics), `/api/cancel`, `/api/respond`, `/api/conversation` (older-page
 pagination), `/api/prompt`, `/api/shells`, `/api/agents`,
 `/api/jobs/<uuid>`, `/api/lifecycle`, `/api/archive` (on-demand archived rows),
 `/api/archive/history` (bounded raw history), `/api/terminal/log` (bounded live
@@ -182,7 +188,7 @@ OrbStack forwarding.
 ## Validation
 ```sh
 bun test
-bun build browser/main.ts --target=browser --outdir "${TMPDIR:-/tmp}/yolo-web-browser"
+bun build browser/main.ts browser/settings.ts --target=browser --outdir "${TMPDIR:-/tmp}/yolo-web-browser"
 bun build scripts/plugin.ts server/index.ts --target=bun --outdir "${TMPDIR:-/tmp}/yolo-web-build"
 ```
 

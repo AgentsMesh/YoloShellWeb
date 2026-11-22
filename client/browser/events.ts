@@ -1,6 +1,5 @@
-import { ApiError, forgetToken, saveToken } from "./api.js";
+import { bindComposerFiles } from "./composerDraft.js";
 import { bindActions, closeDrawer } from "./actions.js";
-import { clearAlerts } from "./alerts.js";
 import { bindArchive } from "./archive.js";
 import {
   filterChanged,
@@ -10,82 +9,28 @@ import {
 import { bindCreate } from "./create.js";
 import { byId } from "./dom.js";
 import { bindLifecycle } from "./lifecycle.js";
-import { enableNotify, saveNotify, saveQuiet } from "./preferences.js";
-import { renderSidebar, renderStatus, showGate } from "./render.js";
-import { lock, setStatus } from "./requestController.js";
 import {
   choose,
   chooseCreated,
+  expireCreated,
   setLens,
 } from "./selectionController.js";
-import { dispatch, getState } from "./store.js";
 import { bindTerminalLog } from "./terminalLog.js";
 
 export function bind(handlers: {
-  start: () => Promise<void>;
   refresh: () => Promise<void>;
 }): void {
   bindActions();
+  bindComposerFiles();
   bindArchive();
   bindLifecycle();
   bindTerminalLog();
   bindCreate({
     refresh: handlers.refresh,
-    created: (machine, terminalId) => chooseCreated(machine, terminalId),
+    created: chooseCreated,
+    expired: expireCreated,
     started: (machine, terminalId, provider, name, cwd) =>
       notePendingAgent(machine, terminalId, provider, name, cwd),
-  });
-  byId<HTMLFormElement>("gate-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const value = saveToken(byId<HTMLInputElement>("token").value);
-    if (!value) {
-      showGate("Enter the token from the plugin data directory.", "bad");
-      return;
-    }
-    try {
-      await handlers.start();
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        forgetToken();
-        showGate("Token rejected.", "bad");
-        return;
-      }
-      showGate(error instanceof Error ? error.message : "Could not connect.", "bad");
-    }
-  });
-  // The gate markup paints before this module runs. Keep Connect disabled until
-  // the submit handler exists so an early click cannot fall through to a native
-  // form navigation and silently drop the token.
-  byId<HTMLButtonElement>("gate-submit").disabled = false;
-  byId("lock").addEventListener("click", lock);
-  byId("notify").addEventListener("click", async () => {
-    const state = getState();
-    if (state.attention.notify) {
-      dispatch({ type: "attention/notify", value: false });
-      saveNotify(false);
-      clearAlerts();
-    } else {
-      dispatch({ type: "attention/notify", value: true });
-      saveNotify(true);
-      const granted = await enableNotify();
-      setStatus(
-        granted
-          ? "In-page and browser notifications on"
-          : window.isSecureContext
-            ? "In-page alerts on; browser notifications are blocked"
-            : "In-page alerts on; browser notifications need HTTPS or localhost",
-        granted ? "ok" : "",
-      );
-      renderStatus();
-    }
-    renderSidebar();
-  });
-  byId("quiet").addEventListener("click", () => {
-    const quiet = !getState().attention.quiet;
-    dispatch({ type: "attention/quiet", value: quiet });
-    saveQuiet(quiet);
-    if (quiet) clearAlerts();
-    renderSidebar();
   });
   byId("alerts").addEventListener("click", (event) => {
     const target = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-id]");

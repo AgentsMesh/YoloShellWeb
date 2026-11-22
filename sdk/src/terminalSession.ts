@@ -72,11 +72,18 @@ export class TerminalSession {
   }
 
   abandon(): void {
+    this.discardInput();
     this.lease.abandon();
   }
 
   release(): Promise<void> {
+    this.discardInput();
     return this.lease.release();
+  }
+
+  /** Relinquish a local writer's queued input while keeping this shared session open. */
+  discardInput(): boolean {
+    return this.input.discardPending();
   }
 
   enqueue(data: Uint8Array): void {
@@ -88,7 +95,7 @@ export class TerminalSession {
   }
 
   async close(): Promise<void> {
-    await this.lease.release();
+    await this.release();
     for (const hub of this.hubs) hub.close();
   }
 }

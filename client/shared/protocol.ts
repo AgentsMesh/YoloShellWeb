@@ -82,11 +82,15 @@ export function conversationKey(
   ].join(":");
 }
 
+export function chatWatchKey(target: WireAgentTarget): string {
+  return `${target.machine ?? ""}:${conversationKey(target)}`;
+}
+
 export type SessionClientFrame =
   | { type: "hello"; token: string; client_id: string }
   | { type: "catalogue.refresh" }
   | { type: "catalogue.snapshot" }
-  | { type: "conversation.watch"; binding: WireAgentTarget }
+  | { type: "conversation.watch"; binding: WireAgentTarget; format?: "chat_v1" }
   | { type: "conversation.unwatch" };
 
 export type SessionConversationFrame =
@@ -136,3 +140,5 @@ export type TerminalServerFrame =
   | TerminalOutputFrame
   | TerminalControlFrame
   | { type: "pong" };
+
+export const TERMINAL_DETACHED = "terminal detached";

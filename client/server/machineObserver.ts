@@ -1,10 +1,12 @@
-import { collectPages } from "../../sdk/src/pages.ts";
+import { observePages, type CollectedPages } from "../../sdk/src/pages.ts";
+import { hasAgentBinding, terminalKey } from "./catalogueRows";
 import { read } from "./hub";
 import { machineView, type MachineView, type ProviderOption } from "./machineView";
 import { providerOptions } from "./providerView";
 
 const POLL_MS = 2_500;
 const HELLO_MS = 60_000;
+type Observation = { terminals: CollectedPages; agents: CollectedPages };
 
 export class MachineObserver {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -65,6 +67,12 @@ export class MachineObserver {
     this.methods = Array.isArray(reply.hello?.methods)
       ? reply.hello.methods.filter((value): value is string => typeof value === "string")
       : [];
+    try {
+      const extensions = await read(this.hub, (client) => client.extensions(this.hub));
+      this.methods.push(...extensions);
+    } catch {
+      // An older peer may reject extension discovery. Its legacy catalogue remains usable.
+    }
     if (this.methods.includes("list_providers")) {
       try {
         const providers = (await read(this.hub, (client) =>
@@ -87,11 +95,11 @@ export class MachineObserver {
     return typeof hub !== "string" || hub === this.hub;
   }
 
-  private own(rows: unknown[]): unknown[] {
-    return rows.filter((row) => this.owns(row));
+  private own(page: CollectedPages, identified: (row: unknown) => unknown): CollectedPages {
+    return { rows: page.rows.filter((row) => this.owns(row)), complete: page.complete && page.rows.every(identified) };
   }
 
-  private async readSnapshot(): Promise<{ terminals: unknown[]; agents: unknown[] } | null> {
+  private async readSnapshot(): Promise<Observation | null> {
     if (!this.methods.includes("get_platform_snapshot")) return null;
     const reply = (await read(this.hub, (client) =>
       client.request(
@@ -109,27 +117,28 @@ export class MachineObserver {
       ),
     )) as { snapshot?: { terminals?: unknown[]; agents?: unknown[]; truncated?: Record<string, unknown> } };
     const snapshot = reply.snapshot;
-    if (!snapshot || snapshot.truncated?.terminals || snapshot.truncated?.agents) return null;
+    if (!snapshot || !Array.isArray(snapshot.terminals) || !Array.isArray(snapshot.agents) ||
+        snapshot.truncated?.terminals !== false || snapshot.truncated?.agents !== false) return null;
     return {
-      terminals: this.own(Array.isArray(snapshot.terminals) ? snapshot.terminals : []),
-      agents: this.own(Array.isArray(snapshot.agents) ? snapshot.agents : []),
+      terminals: { rows: snapshot.terminals, complete: true },
+      agents: { rows: snapshot.agents, complete: true },
     };
   }
 
-  private async list(): Promise<{ terminals: unknown[]; agents: unknown[] }> {
+  private async list(): Promise<Observation> {
     const snapshot = await this.readSnapshot();
     if (snapshot) return snapshot;
-    const terminals = await collectPages("terminals", async (after) => {
+    const terminals = await observePages("terminals", async (after) => {
       return (await read(this.hub, (client) =>
         client.request("list", { include_archived: false, after }, this.hub),
       )) as Record<string, unknown>;
     });
-    const agents = await collectPages("agents", async (after) => {
+    const agents = await observePages("agents", async (after) => {
       return (await read(this.hub, (client) =>
         client.request("list_agents", { after }, this.hub),
       )) as Record<string, unknown>;
     });
-    return { terminals: this.own(terminals), agents: this.own(agents) };
+    return { terminals, agents };
   }
 
   private async poll(): Promise<void> {
@@ -138,22 +147,29 @@ export class MachineObserver {
     try {
       await this.hello();
       const rows = await this.list();
+      if (this.stopped) return;
+      const terminals = this.own(rows.terminals, terminalKey);
+      const agents = this.own(rows.agents, hasAgentBinding);
       this.revision += 1;
       this.view = machineView({
         hub: this.hub,
         label: this.label,
         entry: this.entry,
         reachable: true,
-        freshness: "live",
+        freshness: terminals.complete && agents.complete ? "live" : "stale",
         epoch: this.epoch,
         revision: this.revision,
         methods: this.methods,
         providers: this.providers,
-        terminals: rows.terminals,
-        agents: rows.agents,
+        terminals: terminals.rows,
+        agents: agents.rows,
+      }, {
+        terminals: terminals.complete ? [] : this.view.terminals,
+        agents: agents.complete ? [] : this.view.agents,
       });
       this.onChange(this.view);
     } catch (error) {
+      if (this.stopped) return;
       this.revision += 1;
       const hadRows = this.view.terminals.length > 0 || this.view.agents.length > 0;
       this.view = {

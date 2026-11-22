@@ -1,13 +1,9 @@
 import {
-  clearPending,
-  flush,
   leaseKnown,
   wants,
   type Effect,
   type Machine,
 } from "./terminalControlState.js";
-
-const MAX_PENDING = 64 * 1024;
 
 function takeIfReady(machine: Machine): { machine: Machine; effects: Effect[] } {
   if (
@@ -64,6 +60,13 @@ export function ready(machine: Machine): { machine: Machine; effects: Effect[] }
   return { machine: next, effects };
 }
 
+function invalidatesInput(before: Machine, after: Machine): boolean {
+  if (after.otherController && !before.otherController) return true;
+  if (before.lease === after.lease || before.lease === "unknown") return false;
+  if (before.lease === "controlled" || after.lease === "lost" || after.lease === "released") return true;
+  return before.lease === "acquiring" && after.lease === "observing";
+}
+
 export function lease(
   machine: Machine,
   message: { state?: unknown; controlled?: unknown; controller?: unknown; viewers?: unknown },
@@ -77,19 +80,17 @@ export function lease(
     viewers: typeof message.viewers === "number" ? message.viewers : machine.viewers,
   };
   const effects: Effect[] = [];
+  if (invalidatesInput(machine, next)) {
+    next = { ...next, intent: "none", takeSent: false, autoTake: false };
+    effects.push({ kind: "discardInput", reason: "terminal control changed" });
+  }
   if (state === "controlled") {
     const hadIntent = wants(next) || next.autoTake;
     next = { ...next, autoTake: false, intent: "none", takeSent: false };
-    effects.push({ kind: "clearError" });
-    const flushed = flush(next);
-    next = flushed.machine;
-    effects.push(...flushed.effects);
+    effects.push({ kind: "clearError" }, { kind: "flushInput" });
     if (next.stream === "live") effects.push({ kind: "fit" });
     if (hadIntent) effects.push({ kind: "focus" });
-  } else if (state === "observing" || state === "lost") {
-    if (previous === "controlled" || previous === "acquiring") {
-      next = { ...clearPending(next), intent: "none", takeSent: false };
-    }
+  } else if (state === "observing" || state === "lost" || (state === "released" && wants(next))) {
     if (wants(next) && !next.takeSent) {
       const taken = takeIfReady(next);
       next = taken.machine;
@@ -106,24 +107,9 @@ export function lease(
 
 export function controlError(machine: Machine, message: string): { machine: Machine; effects: Effect[] } {
   return {
-    machine: { ...clearPending(machine), autoTake: false, intent: "none", takeSent: false },
-    effects: [{ kind: "showError", message }, { kind: "render" }],
+    machine: { ...machine, autoTake: false, intent: "none", takeSent: false },
+    effects: [{ kind: "discardInput", reason: message }, { kind: "showError", message }, { kind: "render" }],
   };
-}
-
-export function input(machine: Machine, data: Uint8Array): { machine: Machine; effects: Effect[] } {
-  if (machine.disposed || data.byteLength === 0) return { machine, effects: [] };
-  if (machine.lease === "controlled" && machine.stream === "live") {
-    return { machine, effects: [{ kind: "input", data }] };
-  }
-  if (machine.otherController) return { machine, effects: [{ kind: "render" }] };
-  if (machine.bytes + data.byteLength > MAX_PENDING) return { machine, effects: [] };
-  const buffered = {
-    ...machine,
-    pending: [...machine.pending, Uint8Array.from(data)],
-    bytes: machine.bytes + data.byteLength,
-  };
-  return request(buffered);
 }
 
 export function requestControl(machine: Machine): { machine: Machine; effects: Effect[] } {
@@ -136,12 +122,12 @@ export function release(machine: Machine): { machine: Machine; effects: Effect[]
   if (machine.disposed) return { machine, effects: [] };
   return {
     machine: {
-      ...clearPending(machine),
+      ...machine,
       autoTake: false,
       intent: "none",
       takeSent: false,
       lease: "released",
     },
-    effects: [{ kind: "release" }, { kind: "render" }],
+    effects: [{ kind: "discardInput", reason: "terminal control was released" }, { kind: "release" }, { kind: "render" }],
   };
 }

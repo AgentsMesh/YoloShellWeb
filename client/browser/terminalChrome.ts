@@ -5,6 +5,7 @@ export class TerminalChrome {
   private readonly take = byId<HTMLButtonElement>("terminal-take");
   private readonly size = byId("terminal-size");
   private readonly error = byId("terminal-error");
+  private readonly inputNotice = byId("terminal-file-note");
 
   onTake(handler: () => void): void {
     this.take.onclick = () => handler();
@@ -13,6 +14,11 @@ export class TerminalChrome {
   setStatus(text: string, active = false): void {
     this.status.textContent = text;
     this.status.classList.toggle("is-active", active);
+  }
+
+  setInputNotice(text: string): void {
+    this.inputNotice.textContent = text;
+    this.inputNotice.hidden = !text;
   }
 
   setSize(text: string): void {

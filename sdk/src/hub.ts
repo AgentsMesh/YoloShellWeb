@@ -1,9 +1,12 @@
+import { HubError } from "./hubError.ts";
+import { ManagedChat } from "./chat.ts";
 import { HubWire, type HubEndpoint } from "./hubWire.ts";
 import { collectPages } from "./pages.ts";
 export { HubError } from "./hubError.ts";
 export type { HubEndpoint } from "./hubWire.ts";
 
 export class HubClient {
+  readonly chat = new ManagedChat(this);
   private methods = new Set<string>();
 
   private constructor(
@@ -46,9 +49,19 @@ export class HubClient {
     return this.call(method, { destination, ...params }, timeoutMs);
   }
 
-  async list(): Promise<unknown> {
+  async extensions(destination = this.destination()): Promise<string[]> {
+    try {
+      const result = await this.request("extensions", {}, destination) as { methods?: unknown };
+      return Array.isArray(result.methods) ? result.methods.filter((x) => typeof x === "string") : [];
+    } catch (error) {
+      if (error instanceof HubError && error.code === -32601) return [];
+      throw error;
+    }
+  }
+
+  async list(destination = this.destination(), includeArchived = false): Promise<unknown> {
     return {
-      terminals: await this.catalogue("terminals", "list", { include_archived: false }),
+      terminals: await this.catalogue("terminals", "list", { include_archived: includeArchived }, destination),
       next: null,
     };
   }

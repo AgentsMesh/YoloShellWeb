@@ -23,7 +23,7 @@ function leases(frames: any[]): any[] {
 
 describe("terminal control fan-out", () => {
   test("one actor lease is projected as controlled only to the controller", () => {
-    const actor = new TerminalControlFanout();
+    const actor = new TerminalControlFanout(() => false);
     const first = socket();
     const second = socket();
     actor.add(first, "first");
@@ -45,7 +45,7 @@ describe("terminal control fan-out", () => {
   });
 
   test("a local takeover demotes the old controller without a Hub call", () => {
-    const actor = new TerminalControlFanout();
+    const actor = new TerminalControlFanout(() => false);
     const first = socket();
     const second = socket();
     actor.add(first, "first");
@@ -57,6 +57,19 @@ describe("terminal control fan-out", () => {
     expect(actor.remove(second, "second")).toBe(true);
     expect(leases(first.frames).at(-1)).toMatchObject({ state: "observing", controlled: false });
   });
+  test("replacing a controller socket fences its queued input before its successor becomes ready", () => {
+    let discarded = 0;
+    const actor = new TerminalControlFanout(() => { discarded++; return true; });
+    const old = socket(), replacement = socket();
+    actor.add(old, "same-tab");
+    actor.assign("same-tab");
+    actor.add(replacement, "same-tab");
+    expect(discarded).toBe(1);
+    expect(old.frames.some((frame: string) => JSON.parse(frame).type === "error")).toBe(true);
+    expect(actor.has(old, "same-tab")).toBe(false);
+    expect(leases(replacement.frames).at(-1)).toMatchObject({ controlled: true, controller: true });
+  });
+
 });
 
 describe("terminal output fan-out", () => {

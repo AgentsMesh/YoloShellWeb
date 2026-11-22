@@ -1,4 +1,4 @@
-import { loadToken } from "./api.js";
+import { loadToken, socketUrl } from "./api.js";
 import { clientId } from "./clientIdentity.js";
 import { reconnectDelay } from "./terminalReconnect.js";
 import {
@@ -17,11 +17,6 @@ type Handlers = {
   unauthorized: () => void;
   conversation: (message: SessionConversationFrame) => void;
 };
-
-function url(): string {
-  const scheme = location.protocol === "https:" ? "wss" : "ws";
-  return `${scheme}://${location.host}/ws/session`;
-}
 
 /** One browser tab's catalogue/event subscription; the server owns the poll. */
 export class SessionClient {
@@ -49,7 +44,7 @@ export class SessionClient {
 
   watchConversation(binding: WireAgentTarget): void {
     this.watching = binding;
-    this.send({ type: "conversation.watch", binding });
+    this.send({ type: "conversation.watch", format: "chat_v1", binding });
   }
 
   unwatchConversation(): void {
@@ -72,13 +67,13 @@ export class SessionClient {
       this.handlers.unauthorized();
       return;
     }
-    const socket = new WebSocket(url(), WEB_PROTOCOL);
+    const socket = new WebSocket(socketUrl("/ws/session"), WEB_PROTOCOL);
     this.socket = socket;
     socket.onopen = () => {
       this.send({ type: "hello", token, client_id: this.id });
     };
     socket.onmessage = (event) => {
-      if (this.closed || typeof event.data !== "string") return;
+      if (this.socket !== socket || this.closed || typeof event.data !== "string") return;
       let message: SessionServerFrame;
       try {
         message = JSON.parse(event.data) as SessionServerFrame;
@@ -87,7 +82,7 @@ export class SessionClient {
       }
       if (message?.type === "ready") {
         this.attempts = 0;
-        if (this.watching) this.send({ type: "conversation.watch", binding: this.watching });
+        if (this.watching) this.send({ type: "conversation.watch", format: "chat_v1", binding: this.watching });
         this.handlers.connected();
       } else if (message?.type === "catalogue") {
         this.handlers.catalogue(message.inventory);
@@ -102,7 +97,7 @@ export class SessionClient {
       }
     };
     socket.onclose = (event) => {
-      if (this.closed) return;
+      if (this.socket !== socket || this.closed) return;
       this.socket = null;
       if (event.code === 1008 && event.reason === "unauthorized") {
         this.closed = true;

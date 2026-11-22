@@ -1,4 +1,4 @@
-import { entryKey, partText } from "./conversationModel.js";
+import { entryKey, promptText } from "./conversationModel.js";
 import type { Entry } from "./types.js";
 
 function normalized(value: string): string {
@@ -6,7 +6,7 @@ function normalized(value: string): string {
 }
 
 function entryText(entry: Entry): string {
-  return normalized((entry.parts ?? []).map(partText).join(" "));
+  return normalized(promptText(entry));
 }
 
 /**

@@ -6,7 +6,7 @@ serves an authenticated browser UI.
 
 - `yolo-plugin.json`: trusted plugin manifest.
 - `client/`: Bun server, browser UI, unit tests and e2e scripts.
-- `sdk/`: public Hub JSON-RPC client used by the plugin.
+- [TypeScript SDK](sdk/README.md) for managed Chat and file transfer, built on the public Hub JSON-RPC client.
 
 This is the supported web client path for YoloShell. The plugin runs as a
 trusted user-level process and uses the same-UID local management socket through
@@ -16,7 +16,7 @@ management socket and Hub token never reach the browser.
 ## Install
 
 ```sh
-yolo plugin install web.client --trust
+yolo plugin install web.client
 yolo plugin startup
 yolo plugin log web.client
 cat "$(yolo plugin data-dir web.client)/token"
@@ -25,8 +25,7 @@ yolo plugin action web.client status
 ```
 
 `plugin install` resolves the version from `AgentsMesh/YoloShellPlugins`,
-verifies the pinned source commit and manifest, and links only after the
-explicit `--trust` preview. Installing over a linked version stops and restarts
+verifies the pinned source commit and manifest, and enables the plugin. Installing over a linked version stops and restarts
 a running plugin when its manifest declares a `stop` action. For local
 development, clone this repository and use:
 
@@ -44,7 +43,7 @@ security model and temporary LAN access.
 ```sh
 cd client
 bun test
-bun build browser/main.ts --target=browser --outdir "${TMPDIR:-/tmp}/yolo-web-browser"
+bun build browser/main.ts browser/settings.ts --target=browser --outdir "${TMPDIR:-/tmp}/yolo-web-browser"
 bun build scripts/plugin.ts server/index.ts --target=bun --outdir "${TMPDIR:-/tmp}/yolo-web-server"
 ```
 

@@ -19,6 +19,7 @@ type Created = { machine?: string; terminal_id?: string };
 type Handlers = {
   refresh: () => Promise<void>;
   created: (machine: string, terminalId: string) => void;
+  expired: (machine: string, terminalId: string) => void;
   started: (
     machine: string,
     terminalId: string,
@@ -98,7 +99,9 @@ async function submit(event: SubmitEvent): Promise<void> {
     }
     // Select the creation result now; the catalogue may not report it yet.
     handlers.created(terminal.machine, terminal.terminal_id);
-    await refreshUntil(terminal.machine, terminal.terminal_id, handlers.refresh);
+    if (!(await refreshUntil(terminal.machine, terminal.terminal_id, handlers.refresh))) {
+      handlers.expired(terminal.machine, terminal.terminal_id);
+    }
   } catch (error) {
     if (!keepIntentKey(error)) forgetIntentKey(key);
     message(error instanceof Error ? error.message : "Creation failed", true);

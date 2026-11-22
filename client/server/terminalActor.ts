@@ -9,11 +9,10 @@ const IDLE_MS = 15_000;
 /** One upstream PTY stream/lease shared by every browser tab for an epoch. */
 export class TerminalActor {
   private readonly stream: TerminalStream;
-  private readonly control = new TerminalControlFanout();
+  private readonly control = new TerminalControlFanout(() => this.lease.discardInput());
   private readonly lease: TerminalLease;
   private controlQueue: Promise<void> = Promise.resolve();
   private idle: ReturnType<typeof setTimeout> | null = null;
-  private pendingController: string | null = null;
   private closed = false;
 
   constructor(
@@ -48,13 +47,18 @@ export class TerminalActor {
   }
 
   detachControl(ws: ServerWebSocket<unknown>, clientId: string): void {
+    if (this.closed) return;
     const wasController = this.control.remove(ws, clientId);
-    if (wasController) this.enqueueControl(() => this.releaseLease());
-    if (this.control.count === 0) this.enqueueControl(() => this.releaseLease());
+    if (wasController || this.control.count === 0) {
+      this.enqueueControl(async () => {
+        if (!this.control.controlledBy) await this.releaseLease();
+      });
+    }
     this.maybeIdle();
   }
 
   message(ws: ServerWebSocket<unknown>, clientId: string, message: string | Uint8Array): void {
+    if (this.closed || !this.control.has(ws, clientId)) return;
     if (message instanceof Uint8Array) {
       if (this.control.controlledBy === clientId) this.lease.enqueue(message);
       return;
@@ -65,7 +69,7 @@ export class TerminalActor {
     } catch {
       return;
     }
-    if (value.type === "take") this.enqueueControl(() => this.take(clientId));
+    if (value.type === "take") this.enqueueControl(() => this.take(ws, clientId));
     else if (value.type === "release") this.enqueueControl(() => this.release(clientId));
     else if (value.type === "resize" && typeof value.cols === "number" && typeof value.rows === "number") {
       if (this.control.controlledBy === clientId) {
@@ -81,8 +85,8 @@ export class TerminalActor {
     this.closed = true;
     this.cancelIdle();
     this.stream.close();
+    this.control.close();
     void this.lease.close();
-    this.control.lost();
     this.onIdle();
   }
 
@@ -92,11 +96,6 @@ export class TerminalActor {
    */
   async releaseForPrompt(clientId: string): Promise<void> {
     if (this.closed) return;
-    if (!this.control.owns(clientId)) {
-      // The tab may have just detached; its release is already queued.
-      await this.controlQueue;
-      return;
-    }
     await this.queueControl(async () => {
       if (this.closed || !this.control.owns(clientId)) return;
       this.control.release();
@@ -115,19 +114,26 @@ export class TerminalActor {
     return this.controlQueue;
   }
 
-  private async take(clientId: string): Promise<void> {
-    if (this.closed) return;
+  private async take(ws: ServerWebSocket<unknown>, clientId: string): Promise<void> {
+    if (this.closed || !this.control.has(ws, clientId)) return;
+    if (this.control.controlledBy === clientId && this.lease.state === "controlled") {
+      this.control.assign(clientId);
+      return;
+    }
     this.control.acquire(clientId);
     try {
       if (this.lease.state !== "controlled") {
-        this.pendingController = clientId;
         const held = await this.lease.take();
-        this.pendingController = null;
+        if (this.closed) return;
         if (!held) throw new Error("Terminal control is unavailable");
+      }
+      if (!this.control.has(ws, clientId)) {
+        await this.releaseLease();
+        return;
       }
       this.control.assign(clientId);
     } catch (error) {
-      this.pendingController = null;
+      if (this.closed) return;
       this.control.deny(clientId, error instanceof Error ? error.message : "Terminal control failed");
       if (this.lease.state !== "controlled") this.control.observe();
     }
@@ -145,6 +151,7 @@ export class TerminalActor {
   }
 
   private onLeaseError(error: Error): void {
+    if (this.closed) return;
     this.control.error(error.message);
     // A dead private Hub session must not leave every tab "controlled" while
     // input is dropped by the actor; drop it so the next keystroke reopens.
@@ -154,16 +161,7 @@ export class TerminalActor {
   }
 
   private onLease(state: string): void {
-    if (state === "controlled") {
-      const wanted = this.pendingController;
-      this.pendingController = null;
-      if (wanted) this.control.assign(wanted);
-      else if (!this.control.controlledBy) {
-        void this.releaseLease();
-        this.control.observe();
-      }
-      return;
-    }
+    if (this.closed) return;
     if (state === "lost") this.control.lost();
     else if (state === "observing" || state === "released") this.control.observe();
   }

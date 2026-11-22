@@ -10,7 +10,8 @@ function source(methods: string[]) {
       calls.push({ method, destination });
       return { hello: { methods } };
     },
-    listArchived: async (destination: string) => {
+    list: async (destination: string, includeArchived: boolean) => {
+      expect(includeArchived).toBe(true);
       calls.push({ method: "list", destination });
       return { terminals: [{ archived: true }] };
     },
@@ -28,7 +29,6 @@ function source(methods: string[]) {
     at as unknown as typeof read,
     at as unknown as typeof archive,
     () => [{ hub: peer, machine: machineFor(peer), label: "Peer", reachable: true }],
-    () => null,
   );
   return { calls, ops, peer };
 }
@@ -48,9 +48,9 @@ describe("archive Hub source", () => {
     ]);
   });
 
-  test("detects an unsupported peer before listing its archive", async () => {
+  test("can list finished sessions even on a peer without retained history", async () => {
     const { calls, ops, peer } = source([]);
-    expect(await ops.list(peer)).toEqual({ terminals: [], supports: false });
-    expect(calls).toEqual([{ method: "hello", destination: peer }]);
+    expect(await ops.list(peer)).toEqual({ terminals: [{ archived: true }], supports: false });
+    expect(calls).toEqual([{ method: "hello", destination: peer }, { method: "list", destination: peer }]);
   });
 });

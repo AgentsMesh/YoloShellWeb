@@ -7,7 +7,6 @@ function setInventory(inventory: unknown) {
     type: "catalogue/replace",
     inventory: inventory as any,
     snapshot: undefined,
-    emptyStreak: 0,
     at: 0,
   });
 }

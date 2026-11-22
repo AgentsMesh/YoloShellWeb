@@ -32,7 +32,7 @@ jobs:
         run: bun test
       - name: Browser build
         working-directory: client
-        run: bun build browser/main.ts --target=browser --outdir "$RUNNER_TEMP/web"
+        run: bun build browser/main.ts browser/settings.ts --target=browser --outdir "$RUNNER_TEMP/web"
       - name: Server build
         working-directory: client
         run: bun build scripts/plugin.ts server/index.ts --target=bun --outdir "$RUNNER_TEMP/server"

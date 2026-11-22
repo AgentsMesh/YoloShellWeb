@@ -7,7 +7,7 @@ export async function refreshUntil(
   machine: string,
   terminalId: string,
   refresh: () => Promise<void>,
-): Promise<void> {
+): Promise<boolean> {
   const deadline = Date.now() + 15_000;
   let nudged = 0;
   while (Date.now() < deadline) {
@@ -24,7 +24,8 @@ export async function refreshUntil(
         terminal.address?.machine === machine &&
         terminal.address?.terminal_id === terminalId,
     );
-    if (present) return;
+    if (present) return true;
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
+  return false;
 }

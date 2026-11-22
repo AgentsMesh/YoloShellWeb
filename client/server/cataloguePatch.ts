@@ -1,3 +1,4 @@
+import { agentKey, terminalKey } from "./catalogueRows";
 import type { MachineView, ProviderOption } from "./machineView";
 
 export type MachineHub = {
@@ -41,21 +42,6 @@ export function hubSummary(view: MachineView): MachineHub {
     capabilities: view.capabilities,
     providers: view.providers ?? [],
   };
-}
-
-function id(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-export function terminalKey(value: unknown): string | null {
-  return id((value as { address?: { terminal_id?: unknown } } | null)?.address?.terminal_id);
-}
-
-export function agentKey(value: unknown): string | null {
-  return id(
-    (value as { cursor?: { target?: { address?: { agent_id?: unknown } } } } | null)?.cursor
-      ?.target?.address?.agent_id,
-  );
 }
 
 type Indexed = Map<string, { row: unknown; json: string }>;
@@ -107,6 +93,7 @@ export function machinePatch(previous: MachineView, next: MachineView): PatchDec
   const agents = delta(previous.agents, next.agents, agentKey);
   if (!terminals || !agents) return { kind: "snapshot" };
   if (
+    previous.revision > 0 &&
     !changed(previous, next) &&
     terminals.upsert.length === 0 &&
     terminals.remove.length === 0 &&

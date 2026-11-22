@@ -1,3 +1,4 @@
+import { syncComposer } from "./composerDraft.js";
 import { selected } from "./appSelectors.js";
 import { getState } from "./store.js";
 import { byId } from "./dom.js";
@@ -56,12 +57,16 @@ export function renderPane(takeControl = false): void {
   byId("lens-terminal").setAttribute("aria-pressed", String(snapshot.selection.lens === "terminal"));
   renderInteraction(target);
   const chat = target?.kind === "agent" && snapshot.selection.lens === "chat";
+  const interrupt = byId<HTMLButtonElement>("chat-cancel");
+  interrupt.hidden = !chat || target?.kind !== "agent" || target.agent.capabilities?.interrupt?.support !== "available";
+  interrupt.disabled = snapshot.request.busy;
   byId("conversation").hidden = !chat;
   byId("terminal-view").hidden = target === null || chat;
   syncTerminalView(target, takeControl);
   byId("empty").hidden = target !== null || pending !== null;
   const composer = byId<HTMLFormElement>("composer");
   composer.hidden = !canSend(target) || !chat;
+  syncComposer(target, chat === true);
   byId("chat-locked").hidden = !(target?.kind === "agent" && chat && !canSend(target));
   byId<HTMLTextAreaElement>("prompt").placeholder = "Message the agent…";
   byId<HTMLTextAreaElement>("prompt").disabled = snapshot.request.busy;
@@ -75,20 +80,6 @@ export function renderStatus(): void {
   const current = getState().request.status;
   status.textContent = current.text;
   status.className = `send-status note ${current.kind}`;
-}
-
-export function showGate(message = "", kind = ""): void {
-  byId("app").hidden = true;
-  byId("gate").hidden = false;
-  const note = byId("gate-message");
-  note.textContent = message || "Read the token from the plugin data directory.";
-  note.className = `note ${kind}`;
-  setTimeout(() => byId<HTMLInputElement>("token").focus(), 0);
-}
-
-export function showApp(): void {
-  byId("gate").hidden = true;
-  byId("app").hidden = false;
 }
 
 export function renderAll(): void {

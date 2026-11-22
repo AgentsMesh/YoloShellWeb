@@ -7,6 +7,7 @@ type Pending = {
   timer: ReturnType<typeof setTimeout>;
 };
 
+type Outgoing = { id: number; bytes: Uint8Array; offset: number };
 const CALL_TIMEOUT_MS = 10_000;
 
 /** A timed-out call has an unknown server-side fate and must not be retried. */
@@ -16,6 +17,8 @@ export class HubTimeoutError extends Error {}
 export class HubWire {
   private socket: import("bun").Socket | null = null;
   private pending = new Map<number, Pending>();
+  private outgoing: Outgoing[] = [];
+  private encoder = new TextEncoder();
   private sequence = 0;
   private buffer = "";
   private decoder = new TextDecoder();
@@ -27,6 +30,7 @@ export class HubWire {
       unix: endpoint.socket,
       socket: {
         data: (_socket, data) => wire.receive(data),
+        drain: () => wire.flush(),
         close: () => lost(new Error("Hub connection closed")),
         error: (_socket, error) => lost(error),
       },
@@ -38,22 +42,53 @@ export class HubWire {
 
   call(method: string, params: unknown, timeoutMs = CALL_TIMEOUT_MS): Promise<unknown> {
     const id = ++this.sequence;
-    const socket = this.socket;
-    if (!socket) return Promise.reject(new Error("Hub is not connected"));
+    if (!this.socket) return Promise.reject(new Error("Hub is not connected"));
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new HubTimeoutError("Hub request timed out"));
-      }, timeoutMs);
+      const bytes = this.encoder.encode(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+      const timer = setTimeout(() => this.timeout(id), timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
-      try {
-        socket.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
-      } catch (error) {
-        this.pending.delete(id);
-        clearTimeout(timer);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      }
+      this.outgoing.push({ id, bytes, offset: 0 });
+      if (this.outgoing.length === 1) this.flush();
     });
+  }
+
+  private flush(): void {
+    const socket = this.socket;
+    if (!socket) return;
+    try {
+      while (this.outgoing.length) {
+        const frame = this.outgoing[0];
+        const written = socket.write(frame.bytes.subarray(frame.offset));
+        if (written < 0) throw new Error("Hub socket closed during write");
+        frame.offset += written;
+        if (frame.offset < frame.bytes.length) return;
+        this.outgoing.shift();
+      }
+    } catch (error) {
+      this.abort(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  private timeout(id: number): void {
+    const pending = this.pending.get(id);
+    if (!pending) return;
+    this.pending.delete(id);
+    pending.reject(new HubTimeoutError("Hub request timed out"));
+    const index = this.outgoing.findIndex((frame) => frame.id === id);
+    if (index < 0) return; // Already sent. Ignore its eventual reply.
+    if (this.outgoing[index].offset === 0) {
+      this.outgoing.splice(index, 1);
+      return;
+    }
+    // A partial JSON line cannot be followed by another request on this stream.
+    this.abort(new Error("Hub connection closed after a partial request timed out"));
+  }
+
+  private abort(error: Error): void {
+    const socket = this.socket;
+    this.socket = null;
+    this.fail(error);
+    socket?.terminate();
   }
 
   close(): void {
@@ -104,6 +139,7 @@ export class HubWire {
   }
 
   private fail(error: Error): void {
+    this.outgoing = [];
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(error);

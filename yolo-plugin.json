@@ -2,8 +2,8 @@
   "schema_version": 1,
   "id": "web.client",
   "name": "Yolo Web Client",
-  "version": "0.1.3",
-  "description": "Read-only trusted web client canary for Yolo",
+  "version": "0.2.0",
+  "description": "Interactive terminals and managed agent chat for YoloShell",
   "platforms": ["linux", "macos"],
   "startup": {"command": ["bun", "client/scripts/plugin.ts", "start"]},
   "actions": [

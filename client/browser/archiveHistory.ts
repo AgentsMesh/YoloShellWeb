@@ -1,9 +1,10 @@
+import { copySelection } from "./selectionClipboard.js";
 import { byId } from "./dom.js";
 import { TERMINAL_OPTIONS } from "./terminalTheme.js";
-import { FitCtor, TerminalCtor, type Xterm } from "./terminalXterm.js";
+import { FitCtor, TerminalCtor, observeTerminalSize, type Xterm } from "./terminalXterm.js";
 
 let term: Xterm | null = null;
-let observer: ResizeObserver | null = null;
+let observer: { disconnect(): void } | null = null;
 
 export function archiveHistoryNote(text: string): void {
   byId("archive-history-note").textContent = text;
@@ -36,11 +37,11 @@ export function showArchiveStream(data: Uint8Array): boolean {
   const fit = new FitCtor();
   terminal.loadAddon(fit);
   terminal.open(host);
+  copySelection(terminal, () => archiveHistoryNote("Use your browser’s Copy command for this selection."));
   fit.fit();
   terminal.write("\x1bc");
   terminal.write(data);
   term = terminal;
-  observer = new ResizeObserver(() => fit.fit());
-  observer.observe(host);
+  observer = observeTerminalSize(host, () => fit.fit());
   return true;
 }

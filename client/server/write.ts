@@ -1,3 +1,4 @@
+import { promptContent } from "./promptContent";
 import { interact } from "./hub";
 import { AGENT_SCHEMA } from "./schema";
 import { terminalTarget } from "./target";
@@ -11,7 +12,7 @@ export type PromptOps = {
 
 const live: PromptOps = {
   send: (request, destination) =>
-    interact(destination, (hub) => hub.agentPrompt(request, destination)),
+    interact(destination, (hub) => hub.chat.prompt(request as Record<string, unknown>, destination)),
   release: (body, client) =>
     releaseControlForPrompt(terminalTarget(body), client),
 };
@@ -33,7 +34,7 @@ export async function prompt(
     schema_version: AGENT_SCHEMA,
     request_id: crypto.randomUUID(),
     reference: { reference: "execution", target: agent },
-    prompt: message(body.text),
+    prompt: body.content === undefined ? message(body.text) : promptContent(body.content),
     wait: { wait: "none" },
     take_control: true,
   };

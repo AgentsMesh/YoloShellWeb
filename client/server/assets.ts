@@ -2,6 +2,9 @@ import { readdir } from "node:fs/promises";
 
 const BROWSER = new URL("../browser/", import.meta.url);
 const SHARED = new URL("../shared/", import.meta.url);
+const SDK = new URL("../../sdk/src/", import.meta.url);
+const sdkScripts = new Map<string, string>();
+const publicSdkModules = Promise.resolve(new Set(["attachmentUpload", "chatLegacy"]));
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 const scripts = new Map<string, string>();
 const sharedScripts = new Map<string, string>();
@@ -27,6 +30,10 @@ async function load(
 
 export function script(name: string): Promise<string | null> {
   return load(BROWSER, scripts, moduleNames(), name);
+}
+
+export function sdkScript(name: string): Promise<string | null> {
+  return load(SDK, sdkScripts, publicSdkModules, name);
 }
 
 export function sharedScript(name: string): Promise<string | null> {

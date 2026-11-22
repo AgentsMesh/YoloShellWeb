@@ -4,7 +4,6 @@ import {
   connected,
   disconnected,
   filter,
-  observe,
   patch,
   pendingAgents,
   replace,
@@ -35,8 +34,6 @@ import {
 
 export function reduce(state: AppState, intent: Intent): AppState {
   switch (intent.type) {
-    case "catalogue/observe":
-      return observe(state, intent);
     case "catalogue/replace":
       return replace(state, intent);
     case "catalogue/patch":
@@ -55,6 +52,11 @@ export function reduce(state: AppState, intent: Intent): AppState {
       return choose(state, intent);
     case "selection/created":
       return created(state, intent);
+    case "selection/expire": {
+      const pending = state.selection.pending;
+      if (pending?.id !== intent.id || pending.machine !== intent.machine) return state;
+      return { ...state, selection: { ...state.selection, pending: null } };
+    }
     case "selection/adopt":
       return adopt(state, intent);
     case "selection/lens":

@@ -47,12 +47,6 @@ export function renderSidebar(): void {
   }
   lastNeeds = attention;
   document.title = documentTitle(attention, snapshot.attention.quiet);
-  const quietButton = byId<HTMLButtonElement>("quiet");
-  quietButton.setAttribute("aria-pressed", String(snapshot.attention.quiet));
-  quietButton.textContent = snapshot.attention.quiet ? "Quiet on" : "Quiet";
-  const notifyButton = byId<HTMLButtonElement>("notify");
-  notifyButton.setAttribute("aria-pressed", String(snapshot.attention.notify));
-  notifyButton.textContent = snapshot.attention.notify ? "Notify on" : "Notify";
   byId("updated").textContent = snapshot.catalogue.updatedAt
     ? `Updated ${timeLabel(snapshot.catalogue.updatedAt)}`
     : "Not connected";

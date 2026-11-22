@@ -35,6 +35,11 @@ function view(
 }
 
 describe("catalogue machine patches", () => {
+  test("an empty first observation replaces the discovery placeholder", () => {
+    const first = machinePatch(view(0, [], []), view(1, [], []));
+    expect(first).toMatchObject({ kind: "patch", patch: { base_revision: 0, revision: 1 } });
+  });
+
   test("a revision-only poll is not a frame", () => {
     expect(machinePatch(view(1), view(2)).kind).toBe("none");
   });

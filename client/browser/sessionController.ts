@@ -6,7 +6,7 @@ import {
   disconnected,
 } from "./catalogueController.js";
 import { frame } from "./conversationController.js";
-import { showGate } from "./render.js";
+import { showGate } from "./gate.js";
 import { SessionClient } from "./session.js";
 import { setSession } from "./sessionLink.js";
 

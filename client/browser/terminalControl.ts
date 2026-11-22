@@ -1,7 +1,7 @@
+import { PendingInput, type PasteSource } from "./terminalInput.js";
 import type { TerminalControlHost } from "./terminalControlHost.js";
 import {
   controlError,
-  input as inputEvent,
   lease as leaseEvent,
   ready as readyEvent,
   release as releaseEvent,
@@ -28,11 +28,15 @@ export type TerminalControlState = ControlState;
  */
 export class TerminalControl {
   private machine: Machine;
-  private readonly host: TerminalControlHost;
+  private readonly inputs: PendingInput;
 
-  constructor(host: TerminalControlHost, autoTake: boolean) {
-    this.host = host;
+  constructor(private readonly host: TerminalControlHost, autoTake: boolean) {
     this.machine = initial(autoTake);
+    this.inputs = new PendingInput(() => this.writable, host.sendInput, host.setInputNotice);
+  }
+
+  private get writable(): boolean {
+    return !this.machine.disposed && this.machine.stream === "live" && this.controlled;
   }
 
   get controlled(): boolean {
@@ -59,7 +63,7 @@ export class TerminalControl {
       this.run(
         controlError(
           this.machine,
-          typeof message.message === "string"
+          typeof message.message === "string" && message.message
             ? message.message
             : "Terminal control failed",
         ),
@@ -68,7 +72,25 @@ export class TerminalControl {
   }
 
   input(data: Uint8Array): void {
-    this.run(inputEvent(this.machine, data));
+    if (this.machine.disposed || this.machine.otherController || !data.byteLength) return;
+    this.inputs.input(data);
+    if (this.inputs.pending && !this.controlled) this.requestControl();
+  }
+
+  paste(source: PasteSource, insert: (value: string) => void): void {
+    if (this.machine.disposed) return;
+    if (this.machine.stream !== "live" || this.machine.otherController) {
+      this.host.setInputNotice("Take control of the live terminal and paste again.");
+      return;
+    }
+    this.inputs.paste(source, insert);
+    if (this.controlled) this.inputs.flush();
+    else this.requestControl();
+  }
+
+  /** Write current emulator replies or the bytes xterm just produced for an authorized paste. */
+  writeNow(data: Uint8Array): void {
+    if (this.writable) this.host.sendInput(data);
   }
 
   release(): void {
@@ -81,6 +103,8 @@ export class TerminalControl {
 
   dispose(): void {
     this.machine = disposeMachine(this.machine);
+    this.inputs.clear();
+    this.host.setInputNotice("");
   }
 
   private run(result: { machine: Machine; effects: Effect[] }): void {
@@ -96,8 +120,11 @@ export class TerminalControl {
       case "release":
         this.host.sendRelease();
         return;
-      case "input":
-        this.host.sendInput(effect.data);
+      case "flushInput":
+        this.inputs.flush();
+        return;
+      case "discardInput":
+        this.inputs.clear(effect.reason);
         return;
       case "stdin":
         this.host.setStdin(effect.enabled);

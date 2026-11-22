@@ -29,6 +29,7 @@ type Reply = {
 };
 
 let rows: Archived[] = [];
+let revision = 0;
 const labels = new Map<string, string>();
 
 function note(text: string, kind = ""): void {
@@ -46,6 +47,7 @@ function title(item: Archived): string {
 }
 
 function showList(): void {
+  revision++;
   disposeArchiveTerminal();
   clearFinished();
   showArchiveTerminal(true);
@@ -84,6 +86,7 @@ async function openHistory(item: Archived): Promise<void> {
     note("This archived row has no retained runtime", "bad");
     return;
   }
+  const request = ++revision;
   archiveHistoryNote("Loading history…");
   const query = new URLSearchParams({
     machine,
@@ -92,6 +95,7 @@ async function openHistory(item: Archived): Promise<void> {
   });
   try {
     const history = await api.archiveHistory(query);
+    if (request !== revision || !byId<HTMLDialogElement>("archive").open) return;
     byId("archive-list").hidden = true;
     byId("archive-history").hidden = false;
     byId<HTMLButtonElement>("archive-back").hidden = false;
@@ -109,6 +113,7 @@ async function openHistory(item: Archived): Promise<void> {
       }`,
     );
   } catch (error) {
+    if (request !== revision) return;
     archiveHistoryNote("");
     note(error instanceof Error ? error.message : "Could not read the archive", "bad");
   }
@@ -121,9 +126,11 @@ async function openArchive(): Promise<void> {
   labels.clear();
   showList();
   renderRows();
+  const request = revision;
   note("Loading session history…");
   try {
     const reply = (await api.archive(scope(getState()) ?? undefined)) as Reply;
+    if (request !== revision || !dialog.open) return;
     rows = Array.isArray(reply.terminals) ? reply.terminals : [];
     for (const item of reply.machines ?? []) {
       if (item.machine) labels.set(item.machine, item.label ?? "Machine");
@@ -143,6 +150,7 @@ async function openArchive(): Promise<void> {
       note(parts.length ? parts.join(" · ") : "No ended or archived sessions");
     }
   } catch (error) {
+    if (request !== revision) return;
     note(error instanceof Error ? error.message : "Could not load the session history", "bad");
   }
   renderRows();
@@ -150,15 +158,15 @@ async function openArchive(): Promise<void> {
 
 function closeArchive(): void {
   byId<HTMLDialogElement>("archive").close();
-  disposeArchiveTerminal();
-  clearFinished();
 }
 
 export function bindArchive(): void {
   byId("archive-open").addEventListener("click", () => void openArchive());
   byId("archive-close").addEventListener("click", closeArchive);
   byId("archive-back").addEventListener("click", showList);
-  byId("archive-finish").addEventListener("click", () => void archivePending(openArchive));
+  byId("archive-finish").addEventListener("click", () => void archivePending(async () => {
+    if (byId<HTMLDialogElement>("archive").open) await openArchive();
+  }));
   byId("archive-list").addEventListener("click", (event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
       "button[data-kind=archive]",
@@ -166,10 +174,16 @@ export function bindArchive(): void {
     if (!button) return;
     const item = rows[Number(button.dataset.id)];
     if (!item) return;
+    revision++;
     if (item.finished) showFinished(item);
     else void openHistory(item);
   });
   byId<HTMLDialogElement>("archive").addEventListener("close", () => {
+    if (byId<HTMLDialogElement>("archive").open) return;
+    revision++;
+    rows = [];
+    labels.clear();
+    byId("archive-list").replaceChildren();
     disposeArchiveTerminal();
     clearFinished();
   });

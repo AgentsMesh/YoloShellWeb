@@ -68,6 +68,41 @@ function lease(sessions: FakeSession[]) {
 }
 
 describe("terminal lease session", () => {
+  test("closing during a connect disposes the returned session before it acquires a lease", async () => {
+    const pending = Promise.withResolvers<any>();
+    const session = fake();
+    const value = new TerminalLease(target, () => {}, () => {}, () => pending.promise);
+    const taking = value.take();
+    const closed = value.close();
+    pending.resolve(session);
+    expect(await taking).toBe(false);
+    await closed;
+    expect(session.acquired).toBe(0);
+    expect(session.closes).toBe(1);
+    expect(value.connected).toBe(false);
+    expect(await value.take()).toBe(false);
+  });
+
+  test("closing during an acquire releases the grant when the Hub replies", async () => {
+    const started = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    const session = fake();
+    session.acquire = async () => {
+      started.resolve();
+      await finish.promise;
+      session.state = "controlled";
+    };
+    const { value } = lease([session]);
+    const taking = value.take();
+    await started.promise;
+    const closed = value.close();
+    finish.resolve();
+    expect(await taking).toBe(false);
+    await closed;
+    expect(session.closes).toBe(1);
+    expect(value.connected).toBe(false);
+  });
+
   test("a dead Hub session is replaced before taking control", async () => {
     const dead = fake({ state: "controlled", connected: false });
     const fresh = fake({ generation: 7 });

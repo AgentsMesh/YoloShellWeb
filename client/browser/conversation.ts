@@ -1,8 +1,8 @@
 import { getState } from "./store.js";
-import { renderMarkdown } from "./markdownRender.js";
+import { updateView } from "./chatUpdateView.js";
 import { byId, el } from "./dom.js";
-import { entryLabel, partText, timeLabel } from "./conversationModel.js";
-import type { Entry, Part } from "./types.js";
+import { entryLabel, entryUpdates, timeLabel } from "./conversationModel.js";
+import type { Entry } from "./types.js";
 
 function reasonLabel(reason: string): string {
   switch (reason) {
@@ -19,45 +19,6 @@ function reasonLabel(reason: string): string {
   }
 }
 
-function partView(part: Part): HTMLElement {
-  if (part.kind === "text") {
-    const text = el("div", "part text markdown");
-    text.append(renderMarkdown(part.text ?? ""));
-    return text;
-  }
-  if (part.kind === "thinking") {
-    const details = el("details", "part thinking");
-    details.append(el("summary", "", "Thinking"), el("pre", "", part.text ?? ""));
-    return details;
-  }
-  if (part.kind === "tool_call") {
-    const details = el("details", "part tool");
-    details.append(
-      el("summary", "", `Tool · ${part.name ?? "call"}`),
-      el("pre", "", part.arguments ?? ""),
-    );
-    return details;
-  }
-  if (part.kind === "tool_result") {
-    const details = el("details", "part tool");
-    details.append(
-      el("summary", "", `Result${part.is_error ? " · error" : ""}${part.call_id ? ` · ${part.call_id}` : ""}`),
-      el("pre", "", part.output ?? ""),
-    );
-    return details;
-  }
-  if (part.kind === "compaction") {
-    return el("div", "part notice", `Context compaction: ${part.summary ?? ""}`);
-  }
-  if (part.kind === "image_unavailable") {
-    return el("div", "part notice", `Image unavailable${part.media_type ? ` (${part.media_type})` : ""}`);
-  }
-  if (part.kind === "unsupported") {
-    return el("div", "part notice", `Unsupported record: ${part.native_kind ?? "unknown"}`);
-  }
-  return el("div", "part notice", partText(part));
-}
-
 function turnView(entry: Entry): HTMLElement {
   const article = el("article", `turn turn-role-${entry.role ?? "runtime"}`);
   const head = el("div", "turn-head");
@@ -65,7 +26,7 @@ function turnView(entry: Entry): HTMLElement {
   const time = timeLabel(entry.timestamp);
   if (time) head.append(el("span", "", time));
   article.append(head);
-  for (const part of entry.parts ?? []) article.append(partView(part));
+  for (const update of entryUpdates(entry)) article.append(updateView(update));
   return article;
 }
 

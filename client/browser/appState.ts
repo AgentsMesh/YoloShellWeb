@@ -16,7 +16,6 @@ export type CatalogueState = {
   inventory: Inventory | null;
   index: CatalogueIndex;
   snapshot?: Snapshot;
-  emptyStreak: number;
   connected: boolean;
   updatedAt: number | null;
 };
@@ -79,7 +78,6 @@ export function initialState(input: {
       inventory: null,
       index: emptyIndex(),
       snapshot: undefined,
-      emptyStreak: 0,
       connected: false,
       updatedAt: null,
     },

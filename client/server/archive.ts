@@ -1,3 +1,4 @@
+import { finishedTerminal, type TerminalPhase } from "../shared/terminalLifecycle";
 import { HubError } from "../../sdk/src/hub.ts";
 import { HubTimeoutError } from "../../sdk/src/hubWire";
 import { live } from "./archiveSource";
@@ -15,7 +16,6 @@ export type ArchiveOps = {
   machines(): Machine[];
   list(hub: string): Promise<{ terminals?: unknown[]; supports?: boolean }>;
   history(hub: string, request: Record<string, unknown>): Promise<unknown>;
-  latest?(): unknown;
 };
 
 function lookup(machine: unknown, ops: ArchiveOps): Machine {
@@ -25,7 +25,7 @@ function lookup(machine: unknown, ops: ArchiveOps): Machine {
   return found;
 }
 
-/** Archived rows are fetched on demand; the live catalogue never carries them. */
+/** Fetch finished rows from their owning Hub on demand. */
 export async function listArchive(
   machine?: string,
   ops: ArchiveOps = live,
@@ -48,15 +48,23 @@ export async function listArchive(
       const reply = await ops.list(item.hub);
       if (reply.supports === false) {
         unsupported.push({ machine: item.machine, label: item.label });
-        continue;
       }
       for (const value of reply.terminals ?? []) {
+        const row = value as (TerminalPhase & { address?: { hub_id?: string } }) | null;
+        if (!row || (row.address?.hub_id && row.address.hub_id !== item.hub)) continue;
+        if (row.archived ? reply.supports === false : !finishedTerminal(row)) continue;
         if (terminals.length >= MAX_ARCHIVED) {
           truncated = true;
           break;
         }
-        terminals.push(terminalView(value, item.hub));
-        archived += 1;
+        const terminal = terminalView(row, item.hub) as Record<string, unknown>;
+        if (row.archived) {
+          terminals.push(terminal);
+          archived += 1;
+        } else {
+          terminals.push({ ...terminal, finished: true });
+          finished += 1;
+        }
       }
     } catch (error) {
       // One unreachable machine must not hide another machine's archive.
@@ -65,29 +73,6 @@ export async function listArchive(
       }
     }
     if (truncated) break;
-  }
-  const scope = new Set(selected.filter((item) => item.reachable).map((item) => item.machine));
-  const seen = new Set(
-    (terminals as { address?: { machine?: string; terminal_id?: string } }[]).map(
-      (row) => `${row.address?.machine}:${row.address?.terminal_id}`,
-    ),
-  );
-  const live = (ops.latest?.() ?? null) as {
-    terminals?: { terminals?: Record<string, any>[] };
-  } | null;
-  for (const value of live?.terminals?.terminals ?? []) {
-    if (terminals.length >= MAX_ARCHIVED) {
-      truncated = true;
-      break;
-    }
-    if (!scope.has(value.address?.machine)) continue;
-    const key = `${value.address?.machine}:${value.address?.terminal_id}`;
-    if (seen.has(key)) continue;
-    const status = value.runtime?.status;
-    if (value.archived === true || (status !== "exited" && status !== "lost")) continue;
-    terminals.push({ ...value, finished: true });
-    seen.add(key);
-    finished += 1;
   }
   return {
     machines: selected.map(({ machine: handle, label, reachable: live }) => ({

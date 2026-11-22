@@ -1,3 +1,4 @@
+import type { ChatAddress } from "../../sdk/src/chatTypes";
 import { HubError } from "../../sdk/src/index.ts";
 import { read, watch } from "./hub";
 import type { TerminalTarget } from "./target";
@@ -34,7 +35,7 @@ export function watchRetry(retries: number): { wait: number; announce: boolean }
 /** One watch per agent execution; every tab subscribes to the same pages. */
 export class ConversationActor {
   private readonly subscribers = new Set<Subscriber>();
-  private address: unknown = null;
+  private address: ChatAddress | null = null;
   private since: { generation?: number[]; revision?: number[] } | null = null;
   private lastPage: unknown = null;
   private reported = false;
@@ -44,6 +45,7 @@ export class ConversationActor {
     readonly key: string,
     private readonly binding: Binding,
     private readonly onClose: () => void,
+    private readonly chat = false,
   ) {}
 
   add(subscriber: Subscriber): void {
@@ -81,9 +83,9 @@ export class ConversationActor {
     while (!this.closed && this.subscribers.size > 0) {
       try {
         const reply = (await read(destination, (hub) =>
-          hub.resolveConversation(this.binding, destination),
-        )) as { conversation?: { address?: unknown } };
-        this.address = reply.conversation?.address;
+          this.chat ? hub.chat.open(this.binding, destination) : hub.resolveConversation(this.binding, destination),
+        )) as { conversation?: { address?: ChatAddress }; address?: ChatAddress };
+        this.address = reply.address ?? reply.conversation?.address ?? null;
         if (!this.address) throw new HubError(-32000, "Conversation descriptor is missing", null);
         break;
       } catch (error) {
@@ -109,7 +111,7 @@ export class ConversationActor {
       };
       try {
         const reply = (await watch(destination, (hub) =>
-          hub.watchConversation(request, 1000, destination),
+          this.chat ? hub.chat.read(request, destination, 1000) : hub.watchConversation(request, 1000, destination),
         )) as { reading?: { status?: string; page?: any } };
         retries = 0;
         const reading = reply.reading;
