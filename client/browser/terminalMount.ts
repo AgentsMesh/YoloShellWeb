@@ -72,6 +72,7 @@ export function syncTerminalView(selected: Selected | null, takeControl = false)
   mount.view = new TerminalView(
     { machine, terminal_id, runtime_epoch }, takeControl,
     (exited, message) => stopped(mount, exited, message),
+    selected?.kind === "agent" ? "agent" : "modifier",
   );
   mount.view.open();
 }

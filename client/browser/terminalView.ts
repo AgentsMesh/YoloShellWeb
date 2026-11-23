@@ -1,4 +1,5 @@
 import { copySelection } from "./selectionClipboard.js";
+import { bindMouseSelection } from "./terminalMouseSelection.js";
 import { byId } from "./dom.js";
 import { loadToken } from "./api.js";
 import { bindTerminalFiles } from "./terminalFiles.js";
@@ -28,6 +29,7 @@ export class TerminalView {
   private fit: { fit(): void } | null = null;
   private sockets: TerminalSockets | null = null;
   private observer: { disconnect(): void } | null = null;
+  private mouseSelection: { dispose(): void } | null = null;
   private disposed = false;
   private stream = initial();
   private reconnectAttempts = 0;
@@ -37,6 +39,7 @@ export class TerminalView {
     private readonly target: TerminalTarget,
     autoTake: boolean,
     private readonly stopped: (exited: boolean, message: string) => void,
+    private readonly selectionPolicy: "modifier" | "agent" = "modifier",
   ) {
     this.control = new TerminalControl(
       {
@@ -71,6 +74,7 @@ export class TerminalView {
     this.input.attach(term);
     bindTerminalFiles(this.host, term, this.target, (source) => this.input.paste(term, source), this.files.signal);
     copySelection(term, () => this.chrome.showError("Use your browser’s Copy command for this selection."));
+    this.mouseSelection = bindMouseSelection(term, this.selectionPolicy);
     term.onResize(({ cols, rows }) => {
       if (!this.control.controlled || isSeeding(this.stream)) return;
       this.chrome.setSize(`${cols}×${rows}`);
@@ -106,6 +110,8 @@ export class TerminalView {
     this.reconnectTimer = null;
     this.observer?.disconnect();
     this.observer = null;
+    this.mouseSelection?.dispose();
+    this.mouseSelection = null;
     this.sockets?.close();
     this.sockets = null;
     this.control.dispose();
