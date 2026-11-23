@@ -47,7 +47,9 @@ export function bindMouseSelection(term: Xterm, policy: SelectionPolicy = "modif
     event.stopImmediatePropagation();
     start = point;
     dragging = true;
-    host.setPointerCapture?.(event.pointerId);
+    if (event.pointerId > 0) {
+      try { host.setPointerCapture?.(event.pointerId); } catch {}
+    }
   };
   const move = (event: MouseEvent) => {
     if (policy === "agent" && !dragging && deferredDown) {
@@ -60,7 +62,9 @@ export function bindMouseSelection(term: Xterm, policy: SelectionPolicy = "modif
       start = point;
       event.preventDefault();
       event.stopImmediatePropagation();
-      host.setPointerCapture?.(deferredDown.pointerId);
+      if (deferredDown.pointerId > 0) {
+        try { host.setPointerCapture?.(deferredDown.pointerId); } catch {}
+      }
       term.select(point.column, point.row, 1);
     }
     if (!dragging || !start) return;
