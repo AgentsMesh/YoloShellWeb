@@ -57,6 +57,7 @@ describe("catalogue visibility", () => {
     });
     expect(visibleAgent(agent("running", "unreachable", "stale"), [terminal])).toBe(true);
     expect(visibleAgent(agent("unknown", "reachable", "current"), [terminal])).toBe(true);
+    expect(visibleAgent(agent("unknown", "reachable", "stale"), [terminal])).toBe(false);
     expect(visibleAgent(agent("unknown", "unreachable", "stale"), [terminal])).toBe(false);
     expect(visibleAgent(agent("running", "reachable", "current"), [
       { ...terminal, runtime: { status: "exited" } },
