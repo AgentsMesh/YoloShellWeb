@@ -31,6 +31,7 @@ export function visibleAgent(agent: Agent, terminals: Terminal[]): boolean {
   }
   return (
     state === "unknown" &&
+    agent.freshness === "current" &&
     terminal !== undefined &&
     liveTerminal(terminal) &&
     agent.reachability === "reachable"
