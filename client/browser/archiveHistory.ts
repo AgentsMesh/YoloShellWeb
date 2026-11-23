@@ -1,10 +1,12 @@
 import { copySelection } from "./selectionClipboard.js";
+import { bindMouseSelection } from "./terminalMouseSelection.js";
 import { byId } from "./dom.js";
 import { TERMINAL_OPTIONS } from "./terminalTheme.js";
 import { FitCtor, TerminalCtor, observeTerminalSize, type Xterm } from "./terminalXterm.js";
 
 let term: Xterm | null = null;
 let observer: { disconnect(): void } | null = null;
+let mouseSelection: { dispose(): void } | null = null;
 
 export function archiveHistoryNote(text: string): void {
   byId("archive-history-note").textContent = text;
@@ -13,6 +15,8 @@ export function archiveHistoryNote(text: string): void {
 export function disposeArchiveTerminal(): void {
   observer?.disconnect();
   observer = null;
+  mouseSelection?.dispose();
+  mouseSelection = null;
   term?.dispose();
   term = null;
   byId("archive-terminal").replaceChildren();
@@ -38,6 +42,7 @@ export function showArchiveStream(data: Uint8Array): boolean {
   terminal.loadAddon(fit);
   terminal.open(host);
   copySelection(terminal, () => archiveHistoryNote("Use your browser’s Copy command for this selection."));
+  mouseSelection = bindMouseSelection(terminal, "modifier");
   fit.fit();
   terminal.write("\x1bc");
   terminal.write(data);

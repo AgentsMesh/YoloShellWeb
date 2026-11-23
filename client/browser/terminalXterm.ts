@@ -10,6 +10,12 @@ export type Xterm = {
   onSelectionChange(callback: () => void): { dispose(): void };
   paste(data: string): void;
   attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean): void;
+  element?: HTMLElement;
+  modes?: { mouseTrackingMode?: "none" | "x10" | "vt200" | "drag" | "any" };
+  select(column: number, row: number, length: number): void;
+  buffer?: {
+    active?: { viewportY?: number; baseY?: number; cursorX?: number; cursorY?: number };
+  };
   reset(): void;
   resize(cols: number, rows: number): void;
   write(data: string | Uint8Array, callback?: () => void): void;
