@@ -37,13 +37,12 @@ export function copySelection(term: Xterm, unavailable: () => void): void {
   term.onSelectionChange(() => {
     const text = term.getSelection();
     if (!text) return;
+    // A synchronous copy keeps the clipboard current before a following paste
+    // key can arrive. The async API is the fallback for browsers that reject
+    // execCommand or expose no helper textarea.
+    if (copyEvent(text, term)) return;
     const write = navigator.clipboard?.writeText(text);
-    if (write) {
-      void write.catch(() => {
-        if (term.getSelection() === text && !copyEvent(text, term)) unavailable();
-      });
-      return;
-    }
-    if (!copyEvent(text, term)) unavailable();
+    if (write) void write.catch(() => { if (term.getSelection() === text) unavailable(); });
+    else unavailable();
   });
 }
