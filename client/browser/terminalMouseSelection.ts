@@ -92,9 +92,13 @@ export function bindMouseSelection(term: Xterm, policy: SelectionPolicy = "modif
   host.addEventListener("mousedown", down, true);
   host.addEventListener("mousemove", move, true);
   host.addEventListener("mouseup", up, true);
+  document.addEventListener("mousemove", move, true);
+  document.addEventListener("mouseup", up, true);
   return { dispose() {
     host.removeEventListener("mousedown", down, true);
     host.removeEventListener("mousemove", move, true);
     host.removeEventListener("mouseup", up, true);
+    document.removeEventListener("mousemove", move, true);
+    document.removeEventListener("mouseup", up, true);
   } };
 }
