@@ -78,3 +78,17 @@ test("a stopped observer cannot publish an in-flight result after rediscovery", 
   await tick();
   expect(revisions).toEqual([]);
 });
+
+test("keeps a new peer connecting before declaring it unreachable", async () => {
+  using read = spyOn(hub, "read").mockRejectedValue(new Error("peer is still connecting"));
+  const observer = new MachineObserver(crypto.randomUUID(), false, "Peer", () => {});
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    observer.refresh();
+    await tick();
+    expect(observer.snapshot).toMatchObject({ reachable: false, freshness: "connecting" });
+  }
+  observer.refresh();
+  await tick();
+  expect(observer.snapshot).toMatchObject({ reachable: false, freshness: "unreachable" });
+});

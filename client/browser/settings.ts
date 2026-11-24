@@ -28,7 +28,9 @@ function machines(next: Inventory): void {
     copy.append(el("strong", "", name), el("small", "", [
       hub.entry ? "Entry machine" : "Peer", ...providers,
     ].filter(Boolean).join(" · ")));
-    row.append(copy, el("span", "machine-status", hub.reachable ? "Reachable" : "Unreachable"));
+    const freshness = hub.freshness ?? (hub.reachable ? "live" : "unreachable");
+    const status = freshness === "live" ? "Reachable" : freshness === "connecting" ? "Connecting" : freshness === "stale" ? "Stale" : "Unreachable";
+    row.append(copy, el("span", "machine-status", status));
     rows.push(row);
   }
   machineSelect.replaceChildren(...options);
