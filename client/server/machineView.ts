@@ -22,7 +22,7 @@ export type MachineView = {
   label: string;
   entry: boolean;
   reachable: boolean;
-  freshness: "live" | "stale" | "unreachable";
+  freshness: "live" | "stale" | "connecting" | "unreachable";
   epoch: string;
   revision: number;
   capabilities: MachineCapabilities;

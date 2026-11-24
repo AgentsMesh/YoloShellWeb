@@ -6,6 +6,7 @@ export type MachineSummary = {
   machine?: string;
   label?: string;
   reachable?: boolean;
+  freshness?: "live" | "stale" | "connecting" | "unreachable";
   capabilities?: { create?: boolean; agent_start?: boolean };
 };
 
@@ -32,8 +33,11 @@ function machineRow(
     el("span", "row-title", machineLabel(hub, entryMachine)),
     el("span", "row-context", context),
   );
-  const status = el("span", `row-state state-${hub.reachable ? "done" : "blocked"}`);
-  status.append(el("span", "", hub.reachable ? "Reachable" : "Unreachable"));
+  const freshness = hub.freshness ?? (hub.reachable ? "live" : "unreachable");
+  const state = freshness === "live" ? "done" : freshness === "connecting" ? "unknown" : freshness === "stale" ? "idle" : "blocked";
+  const label = freshness === "live" ? "Reachable" : freshness === "connecting" ? "Connecting" : freshness === "stale" ? "Stale" : "Unreachable";
+  const status = el("span", `row-state state-${state}`);
+  status.append(el("span", "", label));
   button.append(el("span", "row-mark", "M"), copy, status);
   item.append(button);
   return item;

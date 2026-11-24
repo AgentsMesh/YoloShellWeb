@@ -6,6 +6,7 @@ import { providerOptions } from "./providerView";
 
 const POLL_MS = 2_500;
 const HELLO_MS = 60_000;
+const CONNECTING_FAILURES = 4;
 type Observation = { terminals: CollectedPages; agents: CollectedPages };
 
 export class MachineObserver {
@@ -16,6 +17,7 @@ export class MachineObserver {
   private providers: ProviderOption[] = [];
   private helloAt = 0;
   private revision = 0;
+  private failures = 0;
   private readonly epoch = crypto.randomUUID();
   private view: MachineView;
 
@@ -29,8 +31,8 @@ export class MachineObserver {
       hub,
       label,
       entry,
-      reachable: true,
-      freshness: "live",
+      reachable: entry,
+      freshness: entry ? "live" : "connecting",
       epoch: this.epoch,
       revision: 0,
       methods: [],
@@ -150,6 +152,7 @@ export class MachineObserver {
       if (this.stopped) return;
       const terminals = this.own(rows.terminals, terminalKey);
       const agents = this.own(rows.agents, hasAgentBinding);
+      this.failures = 0;
       this.revision += 1;
       this.view = machineView({
         hub: this.hub,
@@ -170,12 +173,14 @@ export class MachineObserver {
       this.onChange(this.view);
     } catch (error) {
       if (this.stopped) return;
+      this.failures += 1;
       this.revision += 1;
       const hadRows = this.view.terminals.length > 0 || this.view.agents.length > 0;
+      const connecting = !hadRows && !this.entry && this.failures < CONNECTING_FAILURES;
       this.view = {
         ...this.view,
         reachable: false,
-        freshness: hadRows ? "stale" : "unreachable",
+        freshness: connecting ? "connecting" : hadRows ? "stale" : "unreachable",
         revision: this.revision,
       };
       this.onChange(this.view);
