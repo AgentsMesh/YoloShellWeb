@@ -145,7 +145,11 @@ export function routeCapabilities(destination: string): Promise<{ lifecycle: boo
         agent_start: reply.capabilities?.agent_start === true,
       };
     } catch (error) {
-      if (error instanceof HubError && error.code === -32601) return null;
+      if (error instanceof HubError && error.code === -32601) {
+        return destination === entry
+          ? { lifecycle: client.supports("create"), agent_start: client.supports("agent_start") }
+          : null;
+      }
       throw error;
     }
   });

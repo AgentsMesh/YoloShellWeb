@@ -16,6 +16,7 @@ test("bounded or malformed reads retain previously seen rows and publish availab
   const request = async (method: string, params: any) => {
     switch (method) {
       case "hello": return { hello: { methods: ["get_platform_snapshot", "agent_start"] } };
+      case "get_route_capabilities": return { capabilities: { lifecycle: true, terminal_write: true, agent_start: true } };
       case "get_platform_snapshot":
         if (phase === 0) return { snapshot: {
           terminals: known.map((id) => terminal(id)), agents: known.map(agent), truncated: { terminals: false, agents: false },
@@ -31,7 +32,10 @@ test("bounded or malformed reads retain previously seen rows and publish availab
       default: throw new Error(method);
     }
   };
-  const client = { request, extensions: async () => [] } as unknown as HubClient;
+  const client = {
+    request,
+    extensions: async () => ["get_route_capabilities"],
+  } as unknown as HubClient;
   using read = spyOn(hub, "read").mockImplementation((_hub, operation) => operation(client));
   const observer = new MachineObserver(crypto.randomUUID(), false, "Peer", () => {});
   observer.refresh();
@@ -97,7 +101,7 @@ test("does not infer a control route from a successful observation read", async 
   const client = {
     extensions: async () => [],
     request: async (method: string) => {
-      if (method === "hello") return { hello: { methods: ["get_platform_snapshot"] } };
+      if (method === "hello") return { hello: { methods: ["get_platform_snapshot", "create", "agent_start"] } };
       return { snapshot: { terminals: [], agents: [], truncated: { terminals: false, agents: false } } };
     },
   } as unknown as HubClient;
@@ -106,6 +110,25 @@ test("does not infer a control route from a successful observation read", async 
   observer.refresh();
   await tick();
   expect(observer.snapshot).toMatchObject({ reachable: false, freshness: "connecting" });
+});
+
+test("an old peer keeps observation while mutation readiness stays unknown", async () => {
+  const client = {
+    extensions: async () => [],
+    request: async (method: string) => {
+      if (method === "hello") return { hello: { methods: ["get_platform_snapshot", "create", "agent_start"] } };
+      return { snapshot: { terminals: [], agents: [], truncated: { terminals: false, agents: false } } };
+    },
+  } as unknown as HubClient;
+  using read = spyOn(hub, "read").mockImplementation((_hub, operation) => operation(client));
+  const observer = new MachineObserver(crypto.randomUUID(), false, "Old peer", () => {}, true, crypto.randomUUID());
+  observer.refresh();
+  await tick();
+  expect(observer.snapshot).toMatchObject({
+    reachable: true,
+    freshness: "live",
+    capabilities: { known: false, create: false, agent_start: false, terminal_lifecycle: false },
+  });
 });
 
 test("keeps observation reachable while disabling actions without mutation routes", async () => {

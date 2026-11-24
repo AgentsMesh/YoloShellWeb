@@ -6,12 +6,15 @@ import type { ProviderFeatures } from "../shared/protocol";
 export type { ProviderFeatures } from "../shared/protocol";
 
 export type MachineCapabilities = {
+  /** Route rights were resolved by the entry Hub for this machine. */
+  known?: boolean;
   create?: boolean;
   agent_start?: boolean;
   terminal_lifecycle?: boolean;
   stage_attachment?: boolean;
 };
 export type RouteCapabilities = {
+  known: boolean;
   lifecycle: boolean;
   terminal_write: boolean;
   agent_start: boolean;
@@ -133,10 +136,11 @@ export function machineView(input: {
     epoch: input.epoch,
     revision: input.revision,
     capabilities: {
-      create: input.route?.lifecycle ?? methods.has("create"),
-      agent_start: input.route?.agent_start ?? methods.has("agent_start"),
-      terminal_lifecycle: input.route?.lifecycle ?? methods.has("terminal"),
-      stage_attachment: input.route?.terminal_write ?? methods.has("stage_attachment"),
+      known: input.entry || input.route?.known === true,
+      create: input.entry ? methods.has("create") : input.route?.known === true && input.route.lifecycle,
+      agent_start: input.entry ? methods.has("agent_start") : input.route?.known === true && input.route.agent_start,
+      terminal_lifecycle: input.entry ? methods.has("terminal") : input.route?.known === true && input.route.lifecycle,
+      stage_attachment: input.entry ? methods.has("stage_attachment") : input.route?.known === true && input.route.terminal_write,
     },
     providers: input.providers ?? [],
     terminals: terminals.map((value) => terminalView(value, input.hub))

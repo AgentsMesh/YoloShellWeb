@@ -33,7 +33,9 @@ export class MachineObserver {
     private readonly entryHub = hub,
   ) {
     this.configuredReachable = reachable;
-    this.route = entry ? { lifecycle: true, terminal_write: true, agent_start: true } : undefined;
+    this.route = entry
+      ? { known: true, lifecycle: true, terminal_write: true, agent_start: true }
+      : { known: false, lifecycle: false, terminal_write: false, agent_start: false };
     this.view = machineView({
       hub,
       label,
@@ -103,11 +105,15 @@ export class MachineObserver {
     } else {
       this.providers = [];
     }
-    if (!this.entry && this.methods.includes("get_route_capabilities")) {
-      try {
-        this.route = await routeCapabilities(this.entryHub, this.hub);
-      } catch {
-        this.route = { lifecycle: false, terminal_write: false, agent_start: false };
+    if (!this.entry) {
+      if (this.methods.includes("get_route_capabilities")) {
+        try {
+          this.route = await routeCapabilities(this.entryHub, this.hub);
+        } catch {
+          this.route = { known: false, lifecycle: false, terminal_write: false, agent_start: false };
+        }
+      } else {
+        this.route = { known: false, lifecycle: false, terminal_write: false, agent_start: false };
       }
     }
     this.helloAt = Date.now();

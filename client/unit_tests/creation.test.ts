@@ -115,4 +115,18 @@ describe("web terminal creation", () => {
     await expect(createShell(body, ops)).rejects.toThrow("does not support creating shells");
     expect(dispatched).toBe(false);
   });
+
+  test("rejects an old peer when route capability discovery is unavailable", async () => {
+    const { body } = fixture();
+    let dispatched = false;
+    const ops: CreationOps = {
+      request: async () => {
+        dispatched = true;
+        return {};
+      },
+      routeCapabilities: async () => null,
+    };
+    await expect(createShell(body, ops)).rejects.toThrow("does not support creating shells");
+    expect(dispatched).toBe(false);
+  });
 });

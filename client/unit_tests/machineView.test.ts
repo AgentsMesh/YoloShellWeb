@@ -44,6 +44,7 @@ describe("machine view privacy", () => {
       { provider_id: "claude_code", display_name: "Claude Code", available: false },
     ]);
     expect(view.capabilities).toEqual({
+      known: true,
       create: true,
       agent_start: true,
       terminal_lifecycle: true,
