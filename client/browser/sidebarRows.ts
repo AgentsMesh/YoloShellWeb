@@ -143,7 +143,11 @@ export function renderSidebarRows(snapshot: AppState): SidebarRows {
   }
   const filtering = filter(snapshot).trim() !== "";
   const agentUnsupported =
-    hubs.length > 0 && hubs.every((hub) => hub.capabilities?.agent_start === false);
+    hubs.length > 0 && hubs.every((hub) =>
+      hub.entry === true
+        ? hub.capabilities?.agent_start === false
+        : hub.capabilities?.agent_start !== true,
+    );
   const visibleAgents = [...pendingRows, ...agentRows];
   appendRows(
     byId("agent-list"),

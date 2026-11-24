@@ -7,7 +7,8 @@ export type MachineSummary = {
   label?: string;
   reachable?: boolean;
   freshness?: "live" | "stale" | "connecting" | "unreachable";
-  capabilities?: { create?: boolean; agent_start?: boolean };
+  entry?: boolean;
+  capabilities?: { known?: boolean; create?: boolean; agent_start?: boolean };
 };
 
 export function machineLabel(hub: MachineSummary, entryMachine?: string): string {
@@ -15,6 +16,14 @@ export function machineLabel(hub: MachineSummary, entryMachine?: string): string
   if (label) return label;
   if (hub.machine && hub.machine === entryMachine) return "This machine";
   return "Machine";
+}
+
+function accessLabel(hub: MachineSummary): string {
+  if (hub.entry !== true && hub.capabilities?.known !== true) return "access pending";
+  if (hub.entry === true) return "";
+  if (hub.capabilities?.create === false) return "read-only";
+  if (hub.capabilities?.agent_start === false) return "shells only";
+  return "";
 }
 
 function machineRow(
@@ -64,7 +73,7 @@ export function renderMachines(): void {
               hub,
               inventory(snapshot)?.machine,
               scope(snapshot) !== null && scope(snapshot) === hub.machine,
-              hub.capabilities?.agent_start === false ? "shells only" : "",
+              accessLabel(hub),
             ),
           ),
         ]
@@ -73,7 +82,11 @@ export function renderMachines(): void {
   byId("machine-list").replaceChildren(...rows);
   const newAgent = byId<HTMLButtonElement>("new-agent");
   const agentUnsupported =
-    hubs.length > 0 && hubs.every((hub) => hub.capabilities?.agent_start === false);
+    hubs.length > 0 && hubs.every((hub) =>
+      hub.entry === true
+        ? hub.capabilities?.agent_start === false
+        : hub.capabilities?.agent_start !== true,
+    );
   newAgent.disabled = agentUnsupported;
   newAgent.title = agentUnsupported
     ? "No machine in this Hub network supports starting agents yet"

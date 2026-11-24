@@ -6,6 +6,7 @@ export async function routeCapabilities(entry: string, target: string): Promise<
     client.request("get_route_capabilities", { target }, entry),
   )) as { capabilities?: Partial<RouteCapabilities> };
   return {
+    known: true,
     lifecycle: reply.capabilities?.lifecycle === true,
     terminal_write: reply.capabilities?.terminal_write === true,
     agent_start: reply.capabilities?.agent_start === true,

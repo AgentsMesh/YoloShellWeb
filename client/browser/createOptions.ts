@@ -13,16 +13,23 @@ export function selectedHub() {
 
 function supported(
   hub: {
+    entry?: boolean;
     reachable?: boolean;
-    capabilities?: { create?: boolean; agent_start?: boolean };
+    capabilities?: { known?: boolean; create?: boolean; agent_start?: boolean };
   },
   mode: Mode,
 ): boolean {
   if (hub.reachable === false) return false;
-  if (mode === "agent") {
-    return hub.capabilities?.agent_start !== false && providerSupported(hub);
+  if (hub.entry === true) {
+    return mode === "agent"
+      ? hub.capabilities?.agent_start !== false && providerSupported(hub)
+      : hub.capabilities?.create !== false;
   }
-  return hub.capabilities?.create !== false;
+  if (hub.capabilities?.known !== true) return false;
+  if (mode === "agent") {
+    return hub.capabilities?.agent_start === true && providerSupported(hub);
+  }
+  return hub.capabilities?.create === true;
 }
 
 export function syncProviders(): void {
@@ -40,7 +47,12 @@ export function machineOptions(mode: Mode): void {
   });
   const options = hubs.length
     ? hubs
-    : [{ machine: inventory(snapshot)?.machine, label: "This machine", capabilities: {} }];
+    : [{
+        machine: inventory(snapshot)?.machine,
+        label: "This machine",
+        entry: true,
+        capabilities: { known: true, create: true, agent_start: true },
+      }];
   select.replaceChildren(
     ...options.map((hub) => {
       const option = document.createElement("option");
@@ -80,6 +92,10 @@ export function syncMachine(
     message(
       mode === "agent" && !providerSupported(selectedHub())
         ? "No agent provider is available on this machine."
+        : selectedHub()?.entry !== true && selectedHub()?.capabilities?.known !== true
+          ? "This machine is still being observed. Its control rights are not available yet."
+        : mode === "shell" && selectedHub()?.capabilities?.create === false
+          ? "This is an observe-only machine import. Ask the remote machine to export Lifecycle access."
         : mode === "agent"
           ? "This machine cannot start agents yet. Pick another machine or create a shell."
           : "This machine cannot create shells yet.",
