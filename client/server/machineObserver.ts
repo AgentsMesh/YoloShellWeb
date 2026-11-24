@@ -1,13 +1,14 @@
-import { observePages, type CollectedPages } from "../../sdk/src/pages.ts";
+import type { CollectedPages } from "../../sdk/src/pages.ts";
 import { hasAgentBinding, terminalKey } from "./catalogueRows";
 import { read } from "./hub";
-import { machineView, type MachineView, type ProviderOption } from "./machineView";
+import { machineView, type MachineView, type ProviderOption, type RouteCapabilities } from "./machineView";
 import { providerOptions } from "./providerView";
+import { routeCapabilities } from "./routeCapabilities";
+import { listObservation, type MachineObservation } from "./machineObservation";
 
 const POLL_MS = 2_500;
 const HELLO_MS = 60_000;
 const CONNECTING_FAILURES = 4;
-type Observation = { terminals: CollectedPages; agents: CollectedPages };
 
 export class MachineObserver {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -19,6 +20,7 @@ export class MachineObserver {
   private revision = 0;
   private failures = 0;
   private configuredReachable: boolean;
+  private route: RouteCapabilities | undefined;
   private readonly epoch = crypto.randomUUID();
   private view: MachineView;
 
@@ -28,8 +30,10 @@ export class MachineObserver {
     private readonly label: string | undefined,
     private readonly onChange: (view: MachineView) => void,
     reachable = true,
+    private readonly entryHub = hub,
   ) {
     this.configuredReachable = reachable;
+    this.route = entry ? { lifecycle: true, terminal_write: true, agent_start: true } : undefined;
     this.view = machineView({
       hub,
       label,
@@ -39,6 +43,7 @@ export class MachineObserver {
       epoch: this.epoch,
       revision: 0,
       methods: [],
+      route: this.route,
       terminals: [],
       agents: [],
     });
@@ -98,6 +103,13 @@ export class MachineObserver {
     } else {
       this.providers = [];
     }
+    if (!this.entry && this.methods.includes("get_route_capabilities")) {
+      try {
+        this.route = await routeCapabilities(this.entryHub, this.hub);
+      } catch {
+        this.route = { lifecycle: false, terminal_write: false, agent_start: false };
+      }
+    }
     this.helloAt = Date.now();
   }
   private owns(value: unknown): boolean {
@@ -109,52 +121,12 @@ export class MachineObserver {
   private own(page: CollectedPages, identified: (row: unknown) => unknown): CollectedPages {
     return { rows: page.rows.filter((row) => this.owns(row)), complete: page.complete && page.rows.every(identified) };
   }
-  private async readSnapshot(): Promise<Observation | null> {
-    if (!this.methods.includes("get_platform_snapshot")) return null;
-    const reply = (await read(this.hub, (client) =>
-      client.request(
-        "get_platform_snapshot",
-        {
-          request: {
-            schema_version: 1,
-            terminal_limit: 128,
-            agent_limit: 128,
-            run_limit: 1,
-            workspace_limit: 1,
-          },
-        },
-        this.hub,
-      ),
-    )) as { snapshot?: { terminals?: unknown[]; agents?: unknown[]; truncated?: Record<string, unknown> } };
-    const snapshot = reply.snapshot;
-    if (!snapshot || !Array.isArray(snapshot.terminals) || !Array.isArray(snapshot.agents) ||
-        snapshot.truncated?.terminals !== false || snapshot.truncated?.agents !== false) return null;
-    return {
-      terminals: { rows: snapshot.terminals, complete: true },
-      agents: { rows: snapshot.agents, complete: true },
-    };
-  }
-  private async list(): Promise<Observation> {
-    const snapshot = await this.readSnapshot();
-    if (snapshot) return snapshot;
-    const terminals = await observePages("terminals", async (after) => {
-      return (await read(this.hub, (client) =>
-        client.request("list", { include_archived: false, after }, this.hub),
-      )) as Record<string, unknown>;
-    });
-    const agents = await observePages("agents", async (after) => {
-      return (await read(this.hub, (client) =>
-        client.request("list_agents", { after }, this.hub),
-      )) as Record<string, unknown>;
-    });
-    return { terminals, agents };
-  }
   private async poll(): Promise<void> {
     if (this.stopped || this.busy) return;
     this.busy = true;
     try {
       await this.hello();
-      const rows = await this.list();
+      const rows: MachineObservation = await listObservation(this.hub, this.methods);
       if (this.stopped) return;
       const terminals = this.own(rows.terminals, terminalKey);
       const agents = this.own(rows.agents, hasAgentBinding);
@@ -171,6 +143,7 @@ export class MachineObserver {
         epoch: this.epoch,
         revision: this.revision,
         methods: this.methods,
+        route: this.route,
         providers: this.providers,
         terminals: terminals.rows,
         agents: agents.rows,

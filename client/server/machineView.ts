@@ -11,6 +11,11 @@ export type MachineCapabilities = {
   terminal_lifecycle?: boolean;
   stage_attachment?: boolean;
 };
+export type RouteCapabilities = {
+  lifecycle: boolean;
+  terminal_write: boolean;
+  agent_start: boolean;
+};
 export type ProviderOption = {
   provider_id: string;
   display_name: string;
@@ -98,6 +103,7 @@ export function machineView(input: {
   epoch: string;
   revision: number;
   methods: string[];
+  route?: RouteCapabilities;
   providers?: ProviderOption[];
   terminals: unknown[];
   agents: unknown[];
@@ -127,10 +133,10 @@ export function machineView(input: {
     epoch: input.epoch,
     revision: input.revision,
     capabilities: {
-      create: methods.has("create"),
-      agent_start: methods.has("agent_start"),
-      terminal_lifecycle: methods.has("terminal"),
-      stage_attachment: methods.has("stage_attachment"),
+      create: input.route?.lifecycle ?? methods.has("create"),
+      agent_start: input.route?.agent_start ?? methods.has("agent_start"),
+      terminal_lifecycle: input.route?.lifecycle ?? methods.has("terminal"),
+      stage_attachment: input.route?.terminal_write ?? methods.has("stage_attachment"),
     },
     providers: input.providers ?? [],
     terminals: terminals.map((value) => terminalView(value, input.hub))

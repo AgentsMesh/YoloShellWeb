@@ -101,4 +101,18 @@ describe("web terminal creation", () => {
     await expect(createShell(body, ops)).rejects.toThrow("does not support");
     await expect(startAgent(body, ops)).rejects.toThrow("provider is not available");
   });
+
+  test("rejects a machine without a mutation route before dispatch", async () => {
+    const { body } = fixture();
+    let dispatched = false;
+    const ops: CreationOps = {
+      request: async () => {
+        dispatched = true;
+        return {};
+      },
+      routeCapabilities: async () => ({ lifecycle: false, agent_start: false }),
+    };
+    await expect(createShell(body, ops)).rejects.toThrow("does not support creating shells");
+    expect(dispatched).toBe(false);
+  });
 });
