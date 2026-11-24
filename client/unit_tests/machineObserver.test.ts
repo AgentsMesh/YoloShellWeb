@@ -92,3 +92,18 @@ test("keeps a new peer connecting before declaring it unreachable", async () => 
   await tick();
   expect(observer.snapshot).toMatchObject({ reachable: false, freshness: "unreachable" });
 });
+
+test("does not infer a control route from a successful observation read", async () => {
+  const client = {
+    extensions: async () => [],
+    request: async (method: string) => {
+      if (method === "hello") return { hello: { methods: ["get_platform_snapshot"] } };
+      return { snapshot: { terminals: [], agents: [], truncated: { terminals: false, agents: false } } };
+    },
+  } as unknown as HubClient;
+  using read = spyOn(hub, "read").mockImplementation((_hub, operation) => operation(client));
+  const observer = new MachineObserver(crypto.randomUUID(), false, "Peer", () => {}, false);
+  observer.refresh();
+  await tick();
+  expect(observer.snapshot).toMatchObject({ reachable: false, freshness: "connecting" });
+});
