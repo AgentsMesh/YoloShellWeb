@@ -18,6 +18,7 @@ export class MachineObserver {
   private helloAt = 0;
   private revision = 0;
   private failures = 0;
+  private configuredReachable: boolean;
   private readonly epoch = crypto.randomUUID();
   private view: MachineView;
 
@@ -26,12 +27,14 @@ export class MachineObserver {
     private readonly entry: boolean,
     private readonly label: string | undefined,
     private readonly onChange: (view: MachineView) => void,
+    reachable = true,
   ) {
+    this.configuredReachable = reachable;
     this.view = machineView({
       hub,
       label,
       entry,
-      reachable: entry,
+      reachable: entry || reachable,
       freshness: entry ? "live" : "connecting",
       epoch: this.epoch,
       revision: 0,
@@ -40,27 +43,35 @@ export class MachineObserver {
       agents: [],
     });
   }
-
   get snapshot(): MachineView {
     return this.view;
   }
-
+  setReachable(reachable: boolean): void {
+    if (this.entry || this.configuredReachable === reachable) return;
+    this.configuredReachable = reachable;
+    const hadRows = this.view.terminals.length > 0 || this.view.agents.length > 0;
+    this.revision += 1;
+    this.view = {
+      ...this.view,
+      reachable,
+      freshness: reachable ? this.view.freshness : hadRows ? "stale" : "connecting",
+      revision: this.revision,
+    };
+    this.onChange(this.view);
+  }
   start(): void {
     if (this.timer) return;
     void this.poll();
     this.timer = setInterval(() => void this.poll(), POLL_MS);
   }
-
   refresh(): void {
     void this.poll();
   }
-
   stop(): void {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
   }
-
   private async hello(): Promise<void> {
     if (this.methods.length && Date.now() - this.helloAt < HELLO_MS) return;
     const reply = (await read(this.hub, (client) =>
@@ -89,18 +100,15 @@ export class MachineObserver {
     }
     this.helloAt = Date.now();
   }
-
   private owns(value: unknown): boolean {
     if (typeof value !== "object" || value === null) return false;
     const item = value as any;
     const hub = item.address?.hub_id ?? item.cursor?.target?.address?.hub_id;
     return typeof hub !== "string" || hub === this.hub;
   }
-
   private own(page: CollectedPages, identified: (row: unknown) => unknown): CollectedPages {
     return { rows: page.rows.filter((row) => this.owns(row)), complete: page.complete && page.rows.every(identified) };
   }
-
   private async readSnapshot(): Promise<Observation | null> {
     if (!this.methods.includes("get_platform_snapshot")) return null;
     const reply = (await read(this.hub, (client) =>
@@ -126,7 +134,6 @@ export class MachineObserver {
       agents: { rows: snapshot.agents, complete: true },
     };
   }
-
   private async list(): Promise<Observation> {
     const snapshot = await this.readSnapshot();
     if (snapshot) return snapshot;
@@ -142,7 +149,6 @@ export class MachineObserver {
     });
     return { terminals, agents };
   }
-
   private async poll(): Promise<void> {
     if (this.stopped || this.busy) return;
     this.busy = true;
@@ -158,8 +164,10 @@ export class MachineObserver {
         hub: this.hub,
         label: this.label,
         entry: this.entry,
-        reachable: true,
-        freshness: terminals.complete && agents.complete ? "live" : "stale",
+        reachable: this.entry || this.configuredReachable,
+        freshness: this.entry || this.configuredReachable
+          ? terminals.complete && agents.complete ? "live" : "stale"
+          : "connecting",
         epoch: this.epoch,
         revision: this.revision,
         methods: this.methods,

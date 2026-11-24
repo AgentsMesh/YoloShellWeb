@@ -92,10 +92,19 @@ export class CatalogueService {
   }
 
   private ensure(hub: string, summary: Record<string, unknown> = {}): void {
-    if (this.observers.has(hub)) return;
+    const reachable = summary.reachable === true;
+    const existing = this.observers.get(hub);
+    if (existing) {
+      existing.setReachable(reachable);
+      return;
+    }
     const label = typeof summary.label === "string" ? summary.label : undefined;
-    const observer = new MachineObserver(hub, hub === this.entry, label, (view) =>
-      this.publish(view),
+    const observer = new MachineObserver(
+      hub,
+      hub === this.entry,
+      label,
+      (view) => this.publish(view),
+      hub === this.entry || reachable,
     );
     this.observers.set(hub, observer);
     observer.start();
