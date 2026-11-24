@@ -8,6 +8,7 @@ export {
   lifecycle,
   poolStats,
   read,
+  routeCapabilities,
   transfer,
   watch,
 } from "./hubPool";

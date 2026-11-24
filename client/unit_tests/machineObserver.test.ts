@@ -107,3 +107,23 @@ test("does not infer a control route from a successful observation read", async 
   await tick();
   expect(observer.snapshot).toMatchObject({ reachable: false, freshness: "connecting" });
 });
+
+test("keeps observation reachable while disabling actions without mutation routes", async () => {
+  const client = {
+    extensions: async () => [],
+    request: async (method: string) => {
+      if (method === "hello") return { hello: { methods: ["get_platform_snapshot", "get_route_capabilities", "create"] } };
+      if (method === "get_route_capabilities") return { capabilities: { lifecycle: false, terminal_write: false, agent_start: false } };
+      return { snapshot: { terminals: [], agents: [], truncated: { terminals: false, agents: false } } };
+    },
+  } as unknown as HubClient;
+  using read = spyOn(hub, "read").mockImplementation((_hub, operation) => operation(client));
+  const observer = new MachineObserver(crypto.randomUUID(), false, "Peer", () => {}, true, crypto.randomUUID());
+  observer.refresh();
+  await tick();
+  expect(observer.snapshot).toMatchObject({
+    reachable: true,
+    freshness: "live",
+    capabilities: { create: false, agent_start: false, terminal_lifecycle: false },
+  });
+});

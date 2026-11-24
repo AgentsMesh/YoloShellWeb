@@ -1,14 +1,13 @@
 import { HubError } from "../../sdk/src/hub.ts";
 import { HubTimeoutError } from "../../sdk/src/hubWire";
 import { ApiError } from "./errors";
-import { create } from "./hub";
+import { create, routeCapabilities } from "./hub";
+import { routeReady } from "./creationReadiness";
 import { machineFor } from "./machineHandles";
 import { prepare, spec, type Kind, type Prepared } from "./creationRequest";
-
 type Address = { hub_id: string; terminal_id: string };
 type Created = { address: Address; creation_capability?: unknown };
 type Started = { address: Address; provider_id?: string; binding?: string };
-
 export type CreationOps = {
   request(
     method: string,
@@ -16,13 +15,13 @@ export type CreationOps = {
     destination: string,
     timeoutMs?: number,
   ): Promise<unknown>;
+  routeCapabilities?: (destination: string) => Promise<{ lifecycle: boolean; agent_start: boolean } | null>;
 };
-
 export const live: CreationOps = {
   request: (method, params, destination, timeoutMs) =>
     create(destination, (hub) => hub.request(method, params, destination, timeoutMs)),
+  routeCapabilities,
 };
-
 const CERTAIN = new Set([
   "unsupported",
   "invalid_directory",
@@ -151,6 +150,7 @@ export async function dispatchShell(
   prepared: Prepared,
   ops: CreationOps,
 ): Promise<unknown> {
+  if (!(await routeReady("shell", prepared.origin, ops.routeCapabilities))) throw unsupported("shell");
   let creation: Created;
   try {
     creation = created(
@@ -167,6 +167,7 @@ export async function dispatchAgent(
   prepared: Prepared,
   ops: CreationOps,
 ): Promise<unknown> {
+  if (!(await routeReady("agent", prepared.origin, ops.routeCapabilities))) throw unsupported("agent");
   try {
     const start = started(
       await ops.request("agent_start", { request: prepared.request }, prepared.origin, 45_000),

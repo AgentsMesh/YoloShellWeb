@@ -105,6 +105,7 @@ export class CatalogueService {
       label,
       (view) => this.publish(view),
       hub === this.entry || reachable,
+      this.entry,
     );
     this.observers.set(hub, observer);
     observer.start();
