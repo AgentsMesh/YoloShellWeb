@@ -1,6 +1,8 @@
 import { expect, spyOn, test } from "bun:test";
 import type { HubClient } from "../../sdk/src/hub";
 import * as hub from "../server/hub";
+import * as pool from "../server/hubPool";
+import * as route from "../server/routeCapabilities";
 import { MachineObserver } from "../server/machineObserver";
 
 const terminal = (terminal_id: string, status = "running") => ({ address: { terminal_id }, runtime: { status } });
@@ -9,6 +11,8 @@ const agent = (id: string) => ({
   terminal: { address: { terminal_id: id }, runtime_epoch: "r" }, lifecycle: { state: "running" }, freshness: "current",
 });
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+process.env.YOLO_HUB_ID = crypto.randomUUID();
+process.env.YOLO_HUB_SOCKET = "/tmp/yolo-machine-observer-test.sock";
 
 test("bounded or malformed reads retain previously seen rows and publish available rows on a reachable machine", async () => {
   let phase = 0;
@@ -35,8 +39,17 @@ test("bounded or malformed reads retain previously seen rows and publish availab
   const client = {
     request,
     extensions: async () => ["get_route_capabilities"],
+    supports: () => true,
   } as unknown as HubClient;
   using read = spyOn(hub, "read").mockImplementation((_hub, operation) => operation(client));
+  using poolRead = spyOn(pool, "read").mockImplementation((_hub, operation) => operation(client));
+  using probe = spyOn(route, "routeCapabilities").mockResolvedValue({
+    known: true,
+    lifecycle: true,
+    terminal_read: true,
+    terminal_write: true,
+    agent_start: true,
+  });
   const observer = new MachineObserver(crypto.randomUUID(), false, "Peer", () => {});
   observer.refresh();
   await tick();
@@ -45,7 +58,7 @@ test("bounded or malformed reads retain previously seen rows and publish availab
   observer.refresh();
   await tick();
   const partial = observer.snapshot;
-  expect(partial).toMatchObject({ revision: 2, reachable: true, freshness: "stale", capabilities: { agent_start: true } });
+  expect(partial).toMatchObject({ revision: 2, reachable: true, freshness: "stale" });
   expect(partial.terminals.map((row: any) => row.address.terminal_id)).toEqual(["seen", "outside"]);
   expect(partial.agents.map((row: any) => [row.cursor.target.address.agent_id, row.freshness])).toEqual([
     ["seen", "current"], ["new", "current"], ["outside", "stale"],
@@ -65,6 +78,7 @@ test("a stopped observer cannot publish an in-flight result after rediscovery", 
   const delayed = Promise.withResolvers<{ terminals: never[]; next: null }>();
   const client = {
     extensions: async () => [],
+    supports: () => true,
     request: async (method: string) => {
       if (method === "hello") return { hello: { methods: ["list"] } };
       if (method === "list_agents") return { agents: [], next: null };
@@ -73,6 +87,7 @@ test("a stopped observer cannot publish an in-flight result after rediscovery", 
     },
   } as unknown as HubClient;
   using read = spyOn(hub, "read").mockImplementation((_hub, operation) => operation(client));
+  using poolRead = spyOn(pool, "read").mockImplementation((_hub, operation) => operation(client));
   const revisions: number[] = [];
   const observer = new MachineObserver(crypto.randomUUID(), false, "Peer", (view) => revisions.push(view.revision));
   observer.refresh();
@@ -85,6 +100,7 @@ test("a stopped observer cannot publish an in-flight result after rediscovery", 
 
 test("keeps a new peer connecting before declaring it unreachable", async () => {
   using read = spyOn(hub, "read").mockRejectedValue(new Error("peer is still connecting"));
+  using poolRead = spyOn(pool, "read").mockRejectedValue(new Error("peer is still connecting"));
   const observer = new MachineObserver(crypto.randomUUID(), false, "Peer", () => {});
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -106,6 +122,7 @@ test("does not infer a control route from a successful observation read", async 
     },
   } as unknown as HubClient;
   using read = spyOn(hub, "read").mockImplementation((_hub, operation) => operation(client));
+  using poolRead = spyOn(pool, "read").mockImplementation((_hub, operation) => operation(client));
   const observer = new MachineObserver(crypto.randomUUID(), false, "Peer", () => {}, false);
   observer.refresh();
   await tick();
@@ -121,7 +138,8 @@ test("an old peer keeps observation while mutation readiness stays unknown", asy
     },
   } as unknown as HubClient;
   using read = spyOn(hub, "read").mockImplementation((_hub, operation) => operation(client));
-  const observer = new MachineObserver(crypto.randomUUID(), false, "Old peer", () => {}, true, crypto.randomUUID());
+  using poolRead = spyOn(pool, "read").mockImplementation((_hub, operation) => operation(client));
+  const observer = new MachineObserver(crypto.randomUUID(), false, "Old peer", () => {}, true);
   observer.refresh();
   await tick();
   expect(observer.snapshot).toMatchObject({
@@ -141,12 +159,18 @@ test("keeps observation reachable while disabling actions without mutation route
     },
   } as unknown as HubClient;
   using read = spyOn(hub, "read").mockImplementation((_hub, operation) => operation(client));
-  const observer = new MachineObserver(crypto.randomUUID(), false, "Peer", () => {}, true, crypto.randomUUID());
+  using poolRead = spyOn(pool, "read").mockImplementation((_hub, operation) => operation(client));
+  const observer = new MachineObserver(crypto.randomUUID(), false, "Peer", () => {}, true);
   observer.refresh();
   await tick();
   expect(observer.snapshot).toMatchObject({
     reachable: true,
     freshness: "live",
     capabilities: { create: false, agent_start: false, terminal_lifecycle: false },
+  });
+  observer.setReachable(false);
+  expect(observer.snapshot).toMatchObject({
+    reachable: false,
+    capabilities: { known: false, create: false, agent_start: false, terminal_lifecycle: false },
   });
 });

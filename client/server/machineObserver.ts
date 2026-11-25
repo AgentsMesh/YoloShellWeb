@@ -3,7 +3,7 @@ import { hasAgentBinding, terminalKey } from "./catalogueRows";
 import { read } from "./hub";
 import { machineView, type MachineView, type ProviderOption, type RouteCapabilities } from "./machineView";
 import { providerOptions } from "./providerView";
-import { routeCapabilities } from "./routeCapabilities";
+import { refreshRoute } from "./machineRoute";
 import { listObservation, type MachineObservation } from "./machineObservation";
 
 const POLL_MS = 2_500;
@@ -21,6 +21,7 @@ export class MachineObserver {
   private failures = 0;
   private configuredReachable: boolean;
   private route: RouteCapabilities | undefined;
+  private routeAt = 0;
   private readonly epoch = crypto.randomUUID();
   private view: MachineView;
 
@@ -30,12 +31,11 @@ export class MachineObserver {
     private readonly label: string | undefined,
     private readonly onChange: (view: MachineView) => void,
     reachable = true,
-    private readonly entryHub = hub,
   ) {
     this.configuredReachable = reachable;
     this.route = entry
-      ? { known: true, lifecycle: true, terminal_write: true, agent_start: true }
-      : { known: false, lifecycle: false, terminal_write: false, agent_start: false };
+      ? { known: true, lifecycle: true, terminal_read: true, terminal_write: true, agent_start: true }
+      : { known: false, lifecycle: false, terminal_read: false, terminal_write: false, agent_start: false };
     this.view = machineView({
       hub,
       label,
@@ -56,14 +56,26 @@ export class MachineObserver {
   setReachable(reachable: boolean): void {
     if (this.entry || this.configuredReachable === reachable) return;
     this.configuredReachable = reachable;
+    if (!reachable && !this.entry) {
+      this.route = { known: false, lifecycle: false, terminal_read: false, terminal_write: false, agent_start: false };
+      this.routeAt = 0;
+    }
     const hadRows = this.view.terminals.length > 0 || this.view.agents.length > 0;
     this.revision += 1;
-    this.view = {
-      ...this.view,
-      reachable,
+    this.view = machineView({
+      hub: this.hub,
+      label: this.label,
+      entry: this.entry,
+      reachable: this.entry || reachable,
       freshness: reachable ? this.view.freshness : hadRows ? "stale" : "connecting",
+      epoch: this.epoch,
       revision: this.revision,
-    };
+      methods: this.methods,
+      route: this.route,
+      providers: this.providers,
+      terminals: this.view.terminals,
+      agents: this.view.agents,
+    });
     this.onChange(this.view);
   }
   start(): void {
@@ -80,41 +92,37 @@ export class MachineObserver {
     this.timer = null;
   }
   private async hello(): Promise<void> {
-    if (this.methods.length && Date.now() - this.helloAt < HELLO_MS) return;
-    const reply = (await read(this.hub, (client) =>
-      client.request("hello", {}, this.hub),
-    )) as { hello?: { methods?: unknown } };
-    this.methods = Array.isArray(reply.hello?.methods)
-      ? reply.hello.methods.filter((value): value is string => typeof value === "string")
-      : [];
-    try {
-      const extensions = await read(this.hub, (client) => client.extensions(this.hub));
-      this.methods.push(...extensions);
-    } catch {
-      // An older peer may reject extension discovery. Its legacy catalogue remains usable.
-    }
-    if (this.methods.includes("list_providers")) {
+    const now = Date.now();
+    if (!this.methods.length || now - this.helloAt >= HELLO_MS) {
+      const reply = (await read(this.hub, (client) =>
+        client.request("hello", {}, this.hub),
+      )) as { hello?: { methods?: unknown } };
+      this.methods = Array.isArray(reply.hello?.methods)
+        ? reply.hello.methods.filter((value): value is string => typeof value === "string")
+        : [];
       try {
-        const providers = (await read(this.hub, (client) =>
-          client.request("list_providers", {}, this.hub, 10_000),
-        )) as { providers?: unknown };
-        this.providers = providerOptions(providers.providers);
+        const extensions = await read(this.hub, (client) => client.extensions(this.hub));
+        this.methods.push(...extensions);
       } catch {
-        // Keep the last advertised list; the machine view is already stale.
+        // An older peer may reject extension discovery. Its legacy catalogue remains usable.
       }
-    } else {
-      this.providers = [];
-    }
-    if (!this.entry) {
-      if (this.methods.includes("get_route_capabilities")) {
+      if (this.methods.includes("list_providers")) {
         try {
-          this.route = await routeCapabilities(this.entryHub, this.hub);
+          const providers = (await read(this.hub, (client) =>
+            client.request("list_providers", {}, this.hub, 10_000),
+          )) as { providers?: unknown };
+          this.providers = providerOptions(providers.providers);
         } catch {
-          this.route = { known: false, lifecycle: false, terminal_write: false, agent_start: false };
+          // Keep the last advertised list; the machine view is already stale.
         }
       } else {
-        this.route = { known: false, lifecycle: false, terminal_write: false, agent_start: false };
+        this.providers = [];
       }
+    }
+    if (!this.entry) {
+      const route = await refreshRoute(this.hub, this.route!, this.routeAt);
+      this.route = route.route;
+      this.routeAt = route.observedAt;
     }
     this.helloAt = Date.now();
   }
@@ -164,12 +172,24 @@ export class MachineObserver {
       this.revision += 1;
       const hadRows = this.view.terminals.length > 0 || this.view.agents.length > 0;
       const connecting = !hadRows && !this.entry && this.failures < CONNECTING_FAILURES;
-      this.view = {
-        ...this.view,
+      if (!this.entry) {
+        this.route = { known: false, lifecycle: false, terminal_read: false, terminal_write: false, agent_start: false };
+        this.routeAt = 0;
+      }
+      this.view = machineView({
+        hub: this.hub,
+        label: this.label,
+        entry: this.entry,
         reachable: false,
         freshness: connecting ? "connecting" : hadRows ? "stale" : "unreachable",
+        epoch: this.epoch,
         revision: this.revision,
-      };
+        methods: this.methods,
+        route: this.route,
+        providers: this.providers,
+        terminals: this.view.terminals,
+        agents: this.view.agents,
+      });
       this.onChange(this.view);
     } finally {
       this.busy = false;

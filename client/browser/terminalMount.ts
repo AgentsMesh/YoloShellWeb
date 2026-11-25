@@ -58,6 +58,14 @@ export function syncTerminalView(selected: Selected | null, takeControl = false)
     byId("terminal-input-state").textContent = "Terminal unavailable";
     return;
   }
+  const hub = inventory(getState())?.hubs?.hubs?.find((item) => item.machine === machine);
+  if (hub?.capabilities?.known === true && hub.capabilities.terminal_read !== true) {
+    unmount();
+    byId("terminal-input-state").textContent = "Terminal read unavailable";
+    byId("terminal-error").textContent = "This machine exposes the catalogue without TerminalRead access.";
+    byId("terminal-error").hidden = false;
+    return;
+  }
   const key = `${machine}:${terminal_id}:${runtime_epoch}`;
   const status = terminal.runtime?.status;
   if (current?.key === key && !(current.retry && current.status !== status)) {
