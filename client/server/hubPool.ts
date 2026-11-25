@@ -133,28 +133,6 @@ export function read<T>(destination: string, operation: (hub: HubClient) => Prom
   return use(destination, "query", operation, true);
 }
 
-export function routeCapabilities(destination: string): Promise<{ lifecycle: boolean; agent_start: boolean } | null> {
-  const entry = hubId();
-  return read(entry, async (client) => {
-    try {
-      const reply = (await client.request("get_route_capabilities", { target: destination }, entry)) as {
-        capabilities?: { lifecycle?: unknown; agent_start?: unknown };
-      };
-      return {
-        lifecycle: reply.capabilities?.lifecycle === true,
-        agent_start: reply.capabilities?.agent_start === true,
-      };
-    } catch (error) {
-      if (error instanceof HubError && error.code === -32601) {
-        return destination === entry
-          ? { lifecycle: client.supports("create"), agent_start: client.supports("agent_start") }
-          : null;
-      }
-      throw error;
-    }
-  });
-}
-
 /** Long-poll conversation reads; one lane per destination. */
 export function watch<T>(destination: string, operation: (hub: HubClient) => Promise<T>): Promise<T> {
   return use(destination, "conversation", operation, true);

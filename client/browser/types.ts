@@ -60,8 +60,10 @@ export type Inventory = {
       epoch?: string;
       revision?: number;
       capabilities?: {
+        known?: boolean;
         create?: boolean;
         agent_start?: boolean;
+        terminal_read?: boolean;
         terminal_lifecycle?: boolean;
         stage_attachment?: boolean;
       };

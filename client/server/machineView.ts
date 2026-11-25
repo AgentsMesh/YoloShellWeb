@@ -10,12 +10,14 @@ export type MachineCapabilities = {
   known?: boolean;
   create?: boolean;
   agent_start?: boolean;
+  terminal_read?: boolean;
   terminal_lifecycle?: boolean;
   stage_attachment?: boolean;
 };
 export type RouteCapabilities = {
   known: boolean;
   lifecycle: boolean;
+  terminal_read: boolean;
   terminal_write: boolean;
   agent_start: boolean;
 };
@@ -137,10 +139,21 @@ export function machineView(input: {
     revision: input.revision,
     capabilities: {
       known: input.entry || input.route?.known === true,
-      create: input.entry ? methods.has("create") : input.route?.known === true && input.route.lifecycle,
-      agent_start: input.entry ? methods.has("agent_start") : input.route?.known === true && input.route.agent_start,
-      terminal_lifecycle: input.entry ? methods.has("terminal") : input.route?.known === true && input.route.lifecycle,
-      stage_attachment: input.entry ? methods.has("stage_attachment") : input.route?.known === true && input.route.terminal_write,
+      create: input.entry
+        ? methods.has("create")
+        : input.route?.known === true && input.reachable && input.freshness === "live" && input.route.lifecycle,
+      agent_start: input.entry
+        ? methods.has("agent_start")
+        : input.route?.known === true && input.reachable && input.freshness === "live" && input.route.agent_start,
+      terminal_read: input.entry
+        ? methods.has("attach")
+        : input.route?.known === true && input.reachable && input.freshness === "live" && input.route.terminal_read,
+      terminal_lifecycle: input.entry
+        ? methods.has("terminal")
+        : input.route?.known === true && input.reachable && input.freshness === "live" && input.route.lifecycle,
+      stage_attachment: input.entry
+        ? methods.has("stage_attachment")
+        : input.route?.known === true && input.reachable && input.freshness === "live" && input.route.terminal_write,
     },
     providers: input.providers ?? [],
     terminals: terminals.map((value) => terminalView(value, input.hub))

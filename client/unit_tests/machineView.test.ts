@@ -17,7 +17,7 @@ describe("machine view privacy", () => {
       freshness: "live",
       epoch: "epoch-1",
       revision: 1,
-      methods: ["create", "agent_start", "terminal", "list_providers"],
+      methods: ["create", "agent_start", "terminal", "attach", "list_providers"],
       providers: [
         { provider_id: "codex", display_name: "Codex", available: true },
         { provider_id: "claude_code", display_name: "Claude Code", available: false },
@@ -47,6 +47,7 @@ describe("machine view privacy", () => {
       known: true,
       create: true,
       agent_start: true,
+      terminal_read: true,
       terminal_lifecycle: true,
       stage_attachment: false,
     });
