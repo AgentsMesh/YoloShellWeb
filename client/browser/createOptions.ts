@@ -32,6 +32,20 @@ function supported(
   return hub.capabilities?.create === true;
 }
 
+export function machineOptionLabel(
+  hub: {
+    entry?: boolean;
+    capabilities?: { known?: boolean; create?: boolean; agent_start?: boolean };
+  },
+  label: string,
+  mode: Mode,
+): string {
+  if (hub.entry !== true && hub.capabilities?.known !== true) return `${label} · access pending`;
+  if (mode === "shell" && hub.capabilities?.create === false) return `${label} · read-only`;
+  if (mode === "agent" && hub.capabilities?.agent_start === false) return `${label} · no agents`;
+  return `${label} · ${mode === "agent" ? "no agents" : "no shells"}`;
+}
+
 export function syncProviders(): void {
   syncProviderSelect(byId<HTMLSelectElement>("create-provider"), selectedHub());
 }
@@ -60,7 +74,7 @@ export function machineOptions(mode: Mode): void {
       const label = hub.label?.trim() || "Machine";
       option.textContent = supported(hub, mode)
         ? label
-        : `${label} · ${mode === "agent" ? "no agents" : "no shells"}`;
+        : machineOptionLabel(hub, label, mode);
       option.disabled = !supported(hub, mode);
       return option;
     }),
