@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { machineLabel } from "../browser/machines";
+import { machineOptionLabel } from "../browser/createOptions";
 import { inScope } from "../browser/appSelectors";
 import { initialState } from "../browser/appState";
 
@@ -19,5 +20,14 @@ describe("machine picker", () => {
     state.ui.scope = peer;
     expect(inScope(peer, state)).toBe(true);
     expect(inScope(crypto.randomUUID(), state)).toBe(false);
+  });
+
+  test("explains a remote route without lifecycle as read-only", () => {
+    expect(machineOptionLabel({ entry: false, capabilities: { known: true, create: false } }, "Mac mini", "shell")).toBe(
+      "Mac mini · read-only",
+    );
+    expect(machineOptionLabel({ entry: false, capabilities: { known: false } }, "Mac mini", "shell")).toBe(
+      "Mac mini · access pending",
+    );
   });
 });
