@@ -2,18 +2,49 @@
   "schema_version": 1,
   "id": "web.client",
   "name": "Yolo Web Client",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Interactive terminals and managed agent chat for YoloShell",
-  "platforms": ["linux", "macos"],
-  "startup": {"command": ["bun", "client/scripts/plugin.ts", "start"]},
-  "actions": [
-    {"id": "status", "title": "Status", "command": ["bun", "client/scripts/plugin.ts", "status"]},
-    {"id": "stop", "title": "Stop", "command": ["bun", "client/scripts/plugin.ts", "stop"]}
+  "platforms": [
+    "linux",
+    "macos"
   ],
-  "web": {"title": "Yolo Web Client"},
+  "startup": {
+    "command": [
+      "bun",
+      "client/scripts/plugin.ts",
+      "start"
+    ]
+  },
+  "actions": [
+    {
+      "id": "status",
+      "title": "Status",
+      "command": [
+        "bun",
+        "client/scripts/plugin.ts",
+        "status"
+      ]
+    },
+    {
+      "id": "stop",
+      "title": "Stop",
+      "command": [
+        "bun",
+        "client/scripts/plugin.ts",
+        "stop"
+      ]
+    }
+  ],
+  "web": {
+    "title": "Yolo Web Client"
+  },
   "api": {
     "protocol_version": 18,
-    "required_methods": ["hello", "list", "list_agents"],
+    "required_methods": [
+      "hello",
+      "list",
+      "list_agents"
+    ],
     "optional_methods": [],
     "features": []
   }
