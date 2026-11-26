@@ -4,8 +4,18 @@ import * as pool from "./hubPool";
 export async function routeCapabilities(target: string): Promise<RouteCapabilities | null> {
   const entry = pool.hubId();
   return pool.read(entry, async (client) => {
-    const supports = (method: string): boolean =>
-      typeof client.supports === "function" && client.supports(method);
+    const methods = new Set<string>();
+    if (typeof client.supports === "function") {
+      for (const method of ["get_route_capabilities", "create", "attach", "read_terminal_text", "lease", "agent_start"]) {
+        if (client.supports(method)) methods.add(method);
+      }
+    }
+    try {
+      for (const method of await client.extensions(entry)) methods.add(method);
+    } catch {
+      // Older Hubs may not expose extension discovery.
+    }
+    const supports = (method: string): boolean => methods.has(method);
     if (!supports("get_route_capabilities")) {
       return target === entry
         ? {
