@@ -106,9 +106,10 @@ while keeping the Terminal lens. Both sockets carry a 15 s heartbeat; a silent
 half-open flow, frozen tab or Hub restart reconnects and rebuilds the actor's
 private Hub session without a page reload.
 
-Inventory and conversations are pushed over `/ws/session`: one broker-side
-machine observer and one conversation watcher feed every tab, instead of each
-tab polling. Each machine advances an observation epoch and monotonic revision.
+Inventory and conversations are pushed over `/ws/session`. All tabs and machines share one catalogue watch
+on the entry Hub. After the initial snapshots, only machines with changed catalogue cursors
+need another resource read. Active sessions keep their live checks.
+Older entry Hubs use snapshot polling. Each machine has an observation epoch and revision.
 The first frame is a snapshot with those revisions; later frames are patches
 containing only changed rows or removals, with a full snapshot for discovery,
 epoch changes, unkeyed rows or a client revision gap. Mutations, long-poll

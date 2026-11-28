@@ -1,17 +1,16 @@
-import type { CollectedPages } from "../../sdk/src/pages.ts";
 import { hasAgentBinding, terminalKey } from "./catalogueRows";
 import { read } from "./hub";
 import { machineView, type MachineView, type ProviderOption, type RouteCapabilities } from "./machineView";
 import { providerOptions } from "./providerView";
-import { refreshRoute } from "./machineRoute";
-import { listObservation, type MachineObservation } from "./machineObservation";
+import { refreshRoute, ROUTE_REFRESH_MS } from "./machineRoute";
+import { listObservation, ownedPage, type MachineObservation } from "./machineObservation";
 
-const POLL_MS = 2_500;
 const HELLO_MS = 60_000;
 const CONNECTING_FAILURES = 4;
 
 export class MachineObserver {
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private lastFull = 0;
+  private queued = false;
   private busy = false;
   private stopped = false;
   private methods: string[] = [];
@@ -77,19 +76,23 @@ export class MachineObserver {
       agents: this.view.agents,
     });
     this.onChange(this.view);
+    if (reachable) this.refresh();
   }
-  start(): void {
-    if (this.timer) return;
-    void this.poll();
-    this.timer = setInterval(() => void this.poll(), POLL_MS);
+  maintain(watching: boolean): void {
+    if (!watching || this.view.freshness !== "live" || this.view.terminals.length || this.view.agents.length ||
+        performance.now() - this.lastFull >= HELLO_MS) this.refresh();
+    else if (!this.entry && Date.now() - this.routeAt >= ROUTE_REFRESH_MS) void this.poll(true);
   }
-  refresh(): void {
-    void this.poll();
-  }
-  stop(): void {
-    this.stopped = true;
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+  refresh(): void { void this.poll(); }
+  stop(): void { this.stopped = true; }
+  private async checkRoute(): Promise<boolean> {
+    if (this.entry || !this.configuredReachable) return false;
+    const before = this.route!;
+    const { route, observedAt } = await refreshRoute(this.hub, before, this.routeAt);
+    if (this.stopped || before !== this.route) return false;
+    this.route = route;
+    this.routeAt = observedAt;
+    return Object.keys(route).some(key => route[key as keyof RouteCapabilities] !== before[key as keyof RouteCapabilities]);
   }
   private async hello(): Promise<void> {
     const now = Date.now();
@@ -118,32 +121,22 @@ export class MachineObserver {
       } else {
         this.providers = [];
       }
+      this.helloAt = Date.now();
     }
-    if (!this.entry) {
-      const route = await refreshRoute(this.hub, this.route!, this.routeAt);
-      this.route = route.route;
-      this.routeAt = route.observedAt;
-    }
-    this.helloAt = Date.now();
+    await this.checkRoute();
   }
-  private owns(value: unknown): boolean {
-    if (typeof value !== "object" || value === null) return false;
-    const item = value as any;
-    const hub = item.address?.hub_id ?? item.cursor?.target?.address?.hub_id;
-    return typeof hub !== "string" || hub === this.hub;
-  }
-  private own(page: CollectedPages, identified: (row: unknown) => unknown): CollectedPages {
-    return { rows: page.rows.filter((row) => this.owns(row)), complete: page.complete && page.rows.every(identified) };
-  }
-  private async poll(): Promise<void> {
-    if (this.stopped || this.busy) return;
+  private async poll(routeOnly = false): Promise<void> {
+    if (this.stopped || (!this.entry && !this.configuredReachable)) return;
+    if (this.busy) { if (!routeOnly) this.queued = true; return; }
     this.busy = true;
     try {
+      if (routeOnly && !await this.checkRoute()) return;
       await this.hello();
       const rows: MachineObservation = await listObservation(this.hub, this.methods);
       if (this.stopped) return;
-      const terminals = this.own(rows.terminals, terminalKey);
-      const agents = this.own(rows.agents, hasAgentBinding);
+      const terminals = ownedPage(this.hub, rows.terminals, terminalKey);
+      const agents = ownedPage(this.hub, rows.agents, hasAgentBinding);
+      this.lastFull = performance.now();
       this.failures = 0;
       this.revision += 1;
       this.view = machineView({
@@ -193,6 +186,7 @@ export class MachineObserver {
       this.onChange(this.view);
     } finally {
       this.busy = false;
+      if (this.queued) { this.queued = false; await this.poll(); }
     }
   }
 }
