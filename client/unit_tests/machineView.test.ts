@@ -69,4 +69,15 @@ describe("machine view privacy", () => {
     expect(rows.terminals.map((t: any) => t.address.terminal_id)).toEqual(["blocked"]);
     expect(rows.agents.map((a: any) => a.terminal.address.terminal_id)).toEqual(["blocked"]);
   });
+
+  test("uses a complete terminal listing to retire orphaned hook history from the live view", () => {
+    const projected = { source: "provider_hook", lifecycle: { state: "unknown" }, freshness: "stale",
+      reachability: "unreachable", terminal: { address: { terminal_id: "old" } } };
+    const input = { hub: HUB, entry: false, reachable: true, freshness: "live" as const, epoch: "a",
+      revision: 1, methods: [], terminals: [], agents: [projected] };
+    expect(machineView({ ...input, terminalsComplete: true }).agents).toHaveLength(0);
+    expect(machineView({ ...input, terminalsComplete: false }).agents).toHaveLength(1);
+    expect(machineView({ ...input, terminalsComplete: true,
+      agents: [{ ...projected, reachability: "reachable" }, { ...projected, source: "connector" }] }).agents).toHaveLength(2);
+  });
 });

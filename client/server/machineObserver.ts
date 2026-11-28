@@ -153,6 +153,7 @@ export class MachineObserver {
         route: this.route,
         providers: this.providers,
         terminals: terminals.rows,
+        terminalsComplete: terminals.complete,
         agents: agents.rows,
       }, {
         terminals: terminals.complete ? [] : this.view.terminals,

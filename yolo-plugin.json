@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "web.client",
   "name": "Yolo Web Client",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "Interactive terminals and managed agent chat for YoloShell",
   "platforms": [
     "linux",

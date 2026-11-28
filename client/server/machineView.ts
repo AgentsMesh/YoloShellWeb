@@ -112,9 +112,11 @@ export function machineView(input: {
   providers?: ProviderOption[];
   terminals: unknown[];
   agents: unknown[];
+  terminalsComplete?: boolean;
 }, previous: Pick<MachineView, "terminals" | "agents"> = { terminals: [], agents: [] }): MachineView {
   const methods = new Set(input.methods);
   const ended = new Set<string>();
+  const present = new Set(input.terminals.map(terminalKey));
   const terminals = input.terminals.filter((value) => {
     const row = value as (TerminalPhase & { address?: { terminal_id?: string } }) | null;
     if (!row) return false;
@@ -126,8 +128,13 @@ export function machineView(input: {
   const retained = unobserved(previous.agents, observed, agentKey)
     .map((value) => ({ ...value as object, freshness: "stale" }));
   const agents = [...observed, ...retained].filter((value) => {
-    const agent = value as { lifecycle?: { state?: string }; terminal?: { address?: { terminal_id?: string } } } | null;
-    return agent?.lifecycle?.state !== "exited" && !ended.has(agent?.terminal?.address?.terminal_id ?? "");
+    const agent = value as { lifecycle?: { state?: string }; freshness?: string; reachability?: string;
+      source?: string; terminal?: { address?: { terminal_id?: string } } } | null;
+    const id = agent?.terminal?.address?.terminal_id;
+    if (agent?.lifecycle?.state === "exited" || ended.has(id ?? "")) return false;
+    const historical = agent?.source === "provider_hook" && agent.lifecycle?.state === "unknown" &&
+      agent.freshness === "stale" && agent.reachability === "unreachable";
+    return !(input.terminalsComplete && id && !present.has(id) && historical);
   });
   return {
     machine: machineFor(input.hub),
