@@ -1,5 +1,6 @@
 import { read, hubId } from "./hubPool";
 import { entryMachine, labelFor, machineFor } from "./machineHandles";
+import { CatalogueWatch } from "./catalogueWatch";
 import { MachineObserver } from "./machineObserver";
 import { CataloguePublisher, type CatalogueEvent } from "./cataloguePublisher";
 import type { MachineView } from "./machineView";
@@ -15,6 +16,8 @@ export class CatalogueService {
   private readonly observers = new Map<string, MachineObserver>();
   private readonly listeners = new Set<Listener>();
   private discovery: ReturnType<typeof setInterval> | null = null;
+  private watch: CatalogueWatch | null = null;
+  private discoveryRequest: Promise<void> | null = null;
   private idle: ReturnType<typeof setTimeout> | null = null;
 
   subscribe(listener: Listener): () => void {
@@ -60,6 +63,11 @@ export class CatalogueService {
   private start(): void {
     if (this.discovery) return;
     this.discovery = setInterval(() => void this.discover(), DISCOVERY_MS);
+    this.watch = new CatalogueWatch(
+      changed => { for (const [id, observer] of this.observers) if (!changed || changed.has(id)) observer.refresh(); },
+      watching => { for (const observer of this.observers.values()) observer.maintain(watching); },
+    );
+    void this.watch.run();
     this.ensure(this.entry);
     void this.discover();
   }
@@ -67,6 +75,9 @@ export class CatalogueService {
   private stop(): void {
     if (this.discovery) clearInterval(this.discovery);
     this.discovery = null;
+    this.watch?.stop();
+    this.watch = null;
+    this.discoveryRequest = null;
     for (const observer of this.observers.values()) observer.stop();
     this.observers.clear();
     this.publisher.reset();
@@ -74,12 +85,21 @@ export class CatalogueService {
   }
 
   private async discover(): Promise<void> {
-    if (!this.discovery) return;
+    const watch = this.watch;
+    if (!watch) return;
+    if (this.discoveryRequest) return this.discoveryRequest;
+    const job = this.readMachines(watch);
+    this.discoveryRequest = job;
+    try { await job; } finally { if (this.discoveryRequest === job) this.discoveryRequest = null; }
+  }
+
+  private async readMachines(watch: CatalogueWatch): Promise<void> {
     this.ensure(this.entry);
     try {
       const reply = (await read(this.entry, (client) => client.listHubs())) as {
         hubs?: unknown;
       };
+      if (watch !== this.watch) return;
       const hubs = Array.isArray(reply.hubs) ? reply.hubs : [];
       for (const value of hubs) {
         if (typeof value !== "object" || value === null) continue;
@@ -107,7 +127,7 @@ export class CatalogueService {
       hub === this.entry || reachable,
     );
     this.observers.set(hub, observer);
-    observer.start();
+    observer.refresh();
   }
 
   private publish(view: MachineView): void {

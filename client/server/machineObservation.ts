@@ -25,3 +25,13 @@ async function readSnapshot(hub: string, methods: string[]): Promise<MachineObse
       snapshot.truncated?.terminals !== false || snapshot.truncated?.agents !== false) return null;
   return { terminals: { rows: snapshot.terminals, complete: true }, agents: { rows: snapshot.agents, complete: true } };
 }
+
+export function ownedPage(hub: string, page: CollectedPages, identified: (row: unknown) => unknown): CollectedPages {
+  const rows = page.rows.filter((value) => {
+    if (!value || typeof value !== "object") return false;
+    const item = value as { address?: { hub_id?: string }; cursor?: { target?: { address?: { hub_id?: string } } } };
+    const origin = item.address?.hub_id ?? item.cursor?.target?.address?.hub_id;
+    return typeof origin !== "string" || origin === hub;
+  });
+  return { rows, complete: page.complete && page.rows.every(identified) };
+}
